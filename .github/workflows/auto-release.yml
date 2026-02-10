@@ -1,0 +1,69 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, '[patch]') || contains(github.event.head_commit.message, '[minor]') || contains(github.event.head_commit.message, '[major]')
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: latest_tag
+        run: |
+          TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
+          echo "tag=${TAG:-v0.0.0}" >> $GITHUB_OUTPUT
+
+      - name: Determine bump type
+        id: bump
+        run: |
+          MESSAGE="${{ github.event.head_commit.message }}"
+          if echo "$MESSAGE" | grep -q '\[major\]'; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$MESSAGE" | grep -q '\[minor\]'; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          else
+            echo "type=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Calculate new version
+        id: new_version
+        run: |
+          CURRENT="${{ steps.latest_tag.outputs.tag }}"
+          CURRENT="${CURRENT#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          BUMP="${{ steps.bump.outputs.type }}"
+
+          if [ "$BUMP" = "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$BUMP" = "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_TAG"
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_TAG="${{ steps.new_version.outputs.tag }}"
+          git tag "$NEW_TAG"
+          git push origin "$NEW_TAG"
+          gh release create "$NEW_TAG" --title "$NEW_TAG" --generate-notes
