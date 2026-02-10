@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Madbox99\UserTeamSync\Models\SyncApp;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
+use Madbox99\UserTeamSync\Publisher\Jobs\SyncPasswordJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\ToggleUserActiveJob;
 
@@ -92,6 +93,11 @@ final class PublisherService
     public function syncUser(string $email, array $changedData): void
     {
         $this->dispatchJob(new SyncUserJob($email, $changedData));
+    }
+
+    public function syncPassword(string $email, string $password): void
+    {
+        $this->dispatchJob(new SyncPasswordJob($email, Hash::make($password)));
     }
 
     public function createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null): void

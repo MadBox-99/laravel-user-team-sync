@@ -27,6 +27,8 @@ final class UserSyncObserver
 
             if ($field === 'email') {
                 $changedData['new_email'] = $user->email;
+            } elseif ($field === 'password') {
+                $changedData['password_hash'] = $user->password;
             } else {
                 $value = $user->{$field};
                 $changedData[$field] = $value instanceof BackedEnum ? $value->value : $value;
