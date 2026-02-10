@@ -34,6 +34,8 @@ abstract class TestCase extends Orchestra
             'prefix' => '',
         ]);
 
+        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+
         $app['config']->set('user-team-sync.mode', 'receiver');
         $app['config']->set('user-team-sync.receiver.api_key', 'test-api-key');
         $app['config']->set('user-team-sync.models.user', \Madbox99\UserTeamSync\Tests\Fixtures\User::class);

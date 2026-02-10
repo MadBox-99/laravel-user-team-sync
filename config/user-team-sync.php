@@ -31,6 +31,16 @@ return [
     'publisher' => [
         'api_key' => env('USER_TEAM_SYNC_API_KEY'),
 
+        /*
+        |----------------------------------------------------------------------
+        | App Source
+        |----------------------------------------------------------------------
+        | 'config'   - Apps are defined in the 'apps' array below
+        | 'database' - Apps are stored in the database (sync_apps table)
+        */
+        'app_source' => env('USER_TEAM_SYNC_APP_SOURCE', 'config'),
+        'apps_table' => 'sync_apps',
+
         'apps' => [
             // 'crm' => [
             //     'url' => env('CRM_APP_URL'),

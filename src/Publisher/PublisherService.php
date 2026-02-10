@@ -7,6 +7,7 @@ namespace Madbox99\UserTeamSync\Publisher;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Madbox99\UserTeamSync\Models\SyncApp;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncUserJob;
@@ -14,11 +15,23 @@ use Madbox99\UserTeamSync\Publisher\Jobs\ToggleUserActiveJob;
 
 final class PublisherService
 {
+    private function usesDatabase(): bool
+    {
+        return config('user-team-sync.publisher.app_source') === 'database';
+    }
+
     /**
      * @return array<string, array{url: string, api_key: ?string, active: bool}>
      */
     public function getApps(): array
     {
+        if ($this->usesDatabase()) {
+            return SyncApp::all()
+                ->keyBy('name')
+                ->map(fn (SyncApp $app) => $app->toAppArray())
+                ->all();
+        }
+
         return config('user-team-sync.publisher.apps', []);
     }
 
@@ -27,6 +40,14 @@ final class PublisherService
      */
     public function getActiveApps(): array
     {
+        if ($this->usesDatabase()) {
+            return SyncApp::where('is_active', true)
+                ->get()
+                ->keyBy('name')
+                ->map(fn (SyncApp $app) => $app->toAppArray())
+                ->all();
+        }
+
         return array_filter($this->getApps(), fn (array $app): bool => $app['active'] ?? false);
     }
 
@@ -51,6 +72,12 @@ final class PublisherService
      */
     public function getApp(string $appName): ?array
     {
+        if ($this->usesDatabase()) {
+            $app = SyncApp::where('name', $appName)->first();
+
+            return $app?->toAppArray();
+        }
+
         return $this->getApps()[$appName] ?? null;
     }
 

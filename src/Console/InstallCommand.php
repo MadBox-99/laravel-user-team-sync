@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync\Console;
 
 use Illuminate\Console\Command;
+use Madbox99\UserTeamSync\Models\SyncApp;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 use function Laravel\Prompts\confirm;
@@ -26,15 +27,23 @@ final class InstallCommand extends Command
         $mode = $this->chooseMode();
         $apiKey = $this->chooseApiKey();
 
-        $this->updateEnvFile($mode, $apiKey);
+        $appSource = in_array($mode, ['publisher', 'both'])
+            ? $this->chooseAppSource()
+            : null;
+
+        $this->updateEnvFile($mode, $apiKey, $appSource);
 
         $this->publishConfig();
         $this->publishMigrations();
         $this->runMigrations();
 
+        if ($appSource === 'database' && in_array($mode, ['publisher', 'both'])) {
+            $this->addAppsInteractively();
+        }
+
         $this->components->info('User Team Sync installed successfully!');
 
-        if ($mode === 'publisher') {
+        if (in_array($mode, ['publisher', 'both']) && $appSource === 'config') {
             $this->components->warn('Configure your receiver apps in config/user-team-sync.php under publisher.apps');
         }
 
@@ -76,7 +85,41 @@ final class InstallCommand extends Command
         );
     }
 
-    private function updateEnvFile(string $mode, string $apiKey): void
+    private function chooseAppSource(): string
+    {
+        return select(
+            label: 'Where should receiver apps be stored?',
+            options: [
+                'database' => 'Database — Manage apps dynamically (recommended)',
+                'config' => 'Config file — Define apps in config/user-team-sync.php',
+            ],
+            default: 'database',
+        );
+    }
+
+    private function addAppsInteractively(): void
+    {
+        if (! confirm('Add a receiver app now?', default: true)) {
+            return;
+        }
+
+        do {
+            $name = text(label: 'App name (e.g. crm, shop)', required: true);
+            $url = text(label: 'App URL (e.g. https://crm.example.com)', required: true);
+            $appApiKey = text(label: 'App API key (leave empty to use default)', default: '');
+
+            SyncApp::query()->create([
+                'name' => $name,
+                'url' => $url,
+                'api_key' => $appApiKey !== '' ? $appApiKey : null,
+                'is_active' => true,
+            ]);
+
+            $this->components->info("App '{$name}' added.");
+        } while (confirm('Add another app?', default: false));
+    }
+
+    private function updateEnvFile(string $mode, string $apiKey, ?string $appSource = null): void
     {
         $envPath = $this->laravel->basePath('.env');
 
@@ -90,6 +133,10 @@ final class InstallCommand extends Command
             'USER_TEAM_SYNC_MODE' => $mode,
             'USER_TEAM_SYNC_API_KEY' => $apiKey,
         ];
+
+        if ($appSource !== null) {
+            $variables['USER_TEAM_SYNC_APP_SOURCE'] = $appSource;
+        }
 
         $additions = [];
 

@@ -38,7 +38,8 @@ src/
 ├── Enums/
 │   └── SyncAction.php             # create_user, sync_user, etc.
 ├── Models/
-│   └── SyncLog.php                # Audit log model ($guarded = [])
+│   ├── SyncLog.php                # Audit log model ($guarded = [])
+│   └── SyncApp.php                # Publisher app model (encrypted api_key, dynamic table)
 ├── Facades/
 │   └── UserTeamSync.php           # Facade for PublisherService
 └── UserTeamSyncServiceProvider.php
@@ -46,6 +47,7 @@ src/
 
 ## Key Conventions
 
+- **App source**: Publisher apps can be stored in config (`app_source = config`, default) or database (`app_source = database`). The `SyncApp` model uses `encrypted` cast for `api_key` and `toAppArray()` to provide a consistent format to `PublisherService`.
 - **Password handling**: Passwords are always hashed on the publisher side. The receiver stores the hash directly (`password_hash` field). Never send plain text passwords.
 - **Infinite loop prevention**: `ValidateSyncApiKey` middleware sets `app('user-team-sync.receiving', true)` during inbound requests (with try/finally reset). Observer checks this flag and skips dispatch when true. Controllers use `saveQuietly()` where needed.
 - **Observer**: Only watches fields listed in `config('user-team-sync.publisher.sync_fields')` (default: `email`, `role`).

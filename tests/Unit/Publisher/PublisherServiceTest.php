@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Hash;
+use Madbox99\UserTeamSync\Models\SyncApp;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncUserJob;
@@ -115,4 +116,66 @@ it('makes http client with bearer token', function (): void {
     $client = $service->makeHttpClient($app);
 
     expect($client)->toBeInstanceOf(\Illuminate\Http\Client\PendingRequest::class);
+});
+
+// Database source tests
+
+it('returns all apps from database', function (): void {
+    config()->set('user-team-sync.publisher.app_source', 'database');
+
+    SyncApp::query()->create(['name' => 'crm', 'url' => 'https://crm.test', 'api_key' => 'crm-key', 'is_active' => true]);
+    SyncApp::query()->create(['name' => 'shop', 'url' => 'https://shop.test', 'api_key' => 'shop-key', 'is_active' => false]);
+
+    $service = app(PublisherService::class);
+    $apps = $service->getApps();
+
+    expect($apps)->toHaveCount(2)
+        ->and($apps['crm']['url'])->toBe('https://crm.test')
+        ->and($apps['shop']['url'])->toBe('https://shop.test');
+});
+
+it('returns only active apps from database', function (): void {
+    config()->set('user-team-sync.publisher.app_source', 'database');
+
+    SyncApp::query()->create(['name' => 'crm', 'url' => 'https://crm.test', 'is_active' => true]);
+    SyncApp::query()->create(['name' => 'shop', 'url' => 'https://shop.test', 'is_active' => false]);
+
+    $service = app(PublisherService::class);
+    $active = $service->getActiveApps();
+
+    expect($active)->toHaveCount(1)
+        ->and(array_keys($active))->toBe(['crm']);
+});
+
+it('returns app by name from database', function (): void {
+    config()->set('user-team-sync.publisher.app_source', 'database');
+
+    SyncApp::query()->create(['name' => 'crm', 'url' => 'https://crm.test', 'api_key' => 'crm-key', 'is_active' => true]);
+
+    $service = app(PublisherService::class);
+
+    expect($service->getApp('crm'))->not->toBeNull()
+        ->and($service->getApp('crm')['url'])->toBe('https://crm.test')
+        ->and($service->getApp('nonexistent'))->toBeNull();
+});
+
+it('returns api key from database app', function (): void {
+    config()->set('user-team-sync.publisher.app_source', 'database');
+
+    SyncApp::query()->create(['name' => 'crm', 'url' => 'https://crm.test', 'api_key' => 'db-key', 'is_active' => true]);
+
+    $service = app(PublisherService::class);
+
+    expect($service->getApiKey('crm'))->toBe('db-key');
+});
+
+it('falls back to default api key for database app with null key', function (): void {
+    config()->set('user-team-sync.publisher.app_source', 'database');
+    config()->set('user-team-sync.publisher.api_key', 'default-key');
+
+    SyncApp::query()->create(['name' => 'crm', 'url' => 'https://crm.test', 'api_key' => null, 'is_active' => true]);
+
+    $service = app(PublisherService::class);
+
+    expect($service->getApiKey('crm'))->toBe('default-key');
 });

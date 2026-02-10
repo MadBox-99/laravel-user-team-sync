@@ -55,10 +55,15 @@ USER_TEAM_SYNC_API_KEY=your-secret-key
 
 ### Publisher Setup
 
-Set mode to `publisher` and configure your receiver apps in `config/user-team-sync.php`:
+Set mode to `publisher`. Receiver apps can be stored in the **config file** or in the **database**.
+
+#### Option A: Config-based apps (default)
+
+Define apps in `config/user-team-sync.php`:
 
 ```php
 'publisher' => [
+    'app_source' => 'config', // default
     'api_key' => env('USER_TEAM_SYNC_API_KEY'),
     'apps' => [
         'crm' => [
@@ -74,6 +79,33 @@ Set mode to `publisher` and configure your receiver apps in `config/user-team-sy
     ],
 ],
 ```
+
+#### Option B: Database-based apps (recommended)
+
+Store apps in the `sync_apps` table for dynamic management:
+
+```env
+USER_TEAM_SYNC_APP_SOURCE=database
+```
+
+The install command (`php artisan user-team-sync:install`) can set this up interactively, or you can manage apps manually:
+
+```php
+use Madbox99\UserTeamSync\Models\SyncApp;
+
+// Add a new app
+SyncApp::create([
+    'name' => 'crm',
+    'url' => 'https://crm.example.com',
+    'api_key' => 'secret-key', // stored encrypted
+    'is_active' => true,
+]);
+
+// Deactivate an app
+SyncApp::where('name', 'crm')->update(['is_active' => false]);
+```
+
+> API keys are stored using Laravel's `encrypted` cast. Make sure your `APP_KEY` is set.
 
 ### Receiver Setup
 
@@ -194,6 +226,7 @@ All sync operations are logged to the `sync_logs` table. Configure in `config/us
 |----------|-------------|---------|
 | `USER_TEAM_SYNC_MODE` | Sync mode | `receiver` |
 | `USER_TEAM_SYNC_API_KEY` | API key for authentication | — |
+| `USER_TEAM_SYNC_APP_SOURCE` | App storage: `config` or `database` | `config` |
 | `USER_TEAM_SYNC_USER_MODEL` | User model class | `App\Models\User` |
 | `USER_TEAM_SYNC_TEAM_MODEL` | Team model class | `App\Models\Team` |
 | `USER_TEAM_SYNC_QUEUE` | Queue name for jobs | `default` |

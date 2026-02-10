@@ -43,11 +43,13 @@ it('allows publisher mode selection', function (): void {
     $this->artisan('user-team-sync:install')
         ->expectsQuestion('Which mode should this app run in?', 'publisher')
         ->expectsConfirmation('Generate a new API key?', 'yes')
+        ->expectsQuestion('Where should receiver apps be stored?', 'config')
         ->expectsConfirmation('Run migrations now?', 'no')
         ->assertSuccessful();
 
     $env = File::get($this->envPath);
-    expect($env)->toContain('USER_TEAM_SYNC_MODE=publisher');
+    expect($env)->toContain('USER_TEAM_SYNC_MODE=publisher')
+        ->and($env)->toContain('USER_TEAM_SYNC_APP_SOURCE=config');
 });
 
 it('allows custom api key', function (): void {
@@ -69,6 +71,7 @@ it('updates existing env variables instead of duplicating', function (): void {
         ->expectsQuestion('Which mode should this app run in?', 'publisher')
         ->expectsConfirmation('Generate a new API key?', 'no')
         ->expectsQuestion('Enter your API key', 'new-key')
+        ->expectsQuestion('Where should receiver apps be stored?', 'config')
         ->expectsConfirmation('Run migrations now?', 'no')
         ->assertSuccessful();
 
