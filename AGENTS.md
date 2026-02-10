@@ -14,6 +14,11 @@ Config key: `user-team-sync.mode` (`publisher` | `receiver` | `both`)
 
 ```
 src/
+├── Concerns/
+│   ├── LogsOutboundSync.php       # Shared trait for publisher jobs (retry config + logging)
+│   └── LogsInboundSync.php        # Shared trait for receiver controllers (logging)
+├── Console/
+│   └── InstallCommand.php         # php artisan user-team-sync:install
 ├── Publisher/
 │   ├── PublisherService.php       # Central orchestrator, dispatches jobs
 │   ├── Observers/
@@ -27,13 +32,13 @@ src/
 │   └── Http/
 │       ├── Controllers/           # API endpoints for incoming sync
 │       ├── Middleware/
-│       │   └── ValidateSyncApiKey.php  # Bearer token auth
+│       │   └── ValidateSyncApiKey.php  # Bearer token auth + receiving guard
 │       └── Requests/              # Form request validation
 ├── Events/                        # Dispatchable events for hooks
 ├── Enums/
 │   └── SyncAction.php             # create_user, sync_user, etc.
 ├── Models/
-│   └── SyncLog.php                # Audit log model
+│   └── SyncLog.php                # Audit log model ($guarded = [])
 ├── Facades/
 │   └── UserTeamSync.php           # Facade for PublisherService
 └── UserTeamSyncServiceProvider.php
@@ -42,7 +47,7 @@ src/
 ## Key Conventions
 
 - **Password handling**: Passwords are always hashed on the publisher side. The receiver stores the hash directly (`password_hash` field). Never send plain text passwords.
-- **Infinite loop prevention**: Receiver uses `saveQuietly()` and an `app('user-team-sync.receiving')` flag to prevent observer re-triggers.
+- **Infinite loop prevention**: `ValidateSyncApiKey` middleware sets `app('user-team-sync.receiving', true)` during inbound requests (with try/finally reset). Observer checks this flag and skips dispatch when true. Controllers use `saveQuietly()` where needed.
 - **Observer**: Only watches fields listed in `config('user-team-sync.publisher.sync_fields')` (default: `email`, `role`).
 - **Email changes**: The observer maps email changes to `new_email` key, using the original email as identifier.
 
@@ -65,6 +70,11 @@ All require Bearer token via `ValidateSyncApiKey` middleware.
 - **Run**: `vendor/bin/pest`
 - **Test models**: `tests/Fixtures/User.php` and `tests/Fixtures/Team.php` (SQLite in-memory)
 
+## Shared Traits
+
+- **`LogsOutboundSync`** (publisher jobs): Provides `initRetryConfig()` for retry/backoff from config, and `logOutbound()` for SyncLog entries.
+- **`LogsInboundSync`** (receiver controllers): Provides `logInbound()` for SyncLog entries.
+
 ## Code Style
 
 - PHP 8.3+, `declare(strict_types=1)` everywhere
@@ -72,3 +82,4 @@ All require Bearer token via `ValidateSyncApiKey` middleware.
 - All classes are `final`
 - Typed properties, constructor promotion, named arguments
 - BackedEnum for action types
+- Static event dispatch (`Event::dispatch()`) instead of `event()` helper
