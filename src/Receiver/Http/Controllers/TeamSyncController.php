@@ -7,14 +7,16 @@ namespace Madbox99\UserTeamSync\Receiver\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Log;
+use Madbox99\UserTeamSync\Concerns\LogsInboundSync;
 use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\TeamCreatedFromSync;
-use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\CreateTeamRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\GetUserTeamsRequest;
 
 final class TeamSyncController extends Controller
 {
+    use LogsInboundSync;
+
     public function create(CreateTeamRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -40,7 +42,7 @@ final class TeamSyncController extends Controller
             }
         }
 
-        $this->log(SyncAction::CreateTeam, $validated['user_email'] ?? '');
+        $this->logInbound(SyncAction::CreateTeam, $validated['user_email'] ?? '');
 
         Log::info('UserTeamSync: Team created via sync', [
             'team_id' => $team->id,
@@ -48,7 +50,7 @@ final class TeamSyncController extends Controller
             'user_attached' => $userAttached,
         ]);
 
-        event(new TeamCreatedFromSync($team));
+        TeamCreatedFromSync::dispatch($team);
 
         return response()->json([
             'message' => 'Team created successfully',
@@ -66,23 +68,9 @@ final class TeamSyncController extends Controller
         $user = $userModel::query()->where('email', $validated['user_email'])->first();
 
         $teams = $user && method_exists($user, 'teams')
-            ? $user->teams()->get(['teams.id'])
+            ? $user->teams()->pluck('teams.id')->map(fn ($id) => ['id' => $id])
             : collect();
 
         return response()->json(['teams' => $teams]);
-    }
-
-    private function log(SyncAction $action, string $email): void
-    {
-        if (! config('user-team-sync.logging.enabled')) {
-            return;
-        }
-
-        SyncLog::query()->create([
-            'action' => $action->value,
-            'direction' => 'inbound',
-            'email' => $email,
-            'status' => 'success',
-        ]);
     }
 }

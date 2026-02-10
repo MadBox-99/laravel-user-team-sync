@@ -11,11 +11,6 @@ use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
 
-function authHeaders(): array
-{
-    return ['Authorization' => 'Bearer test-api-key'];
-}
-
 // --- Create User ---
 
 it('creates a user with hashed password', function (): void {

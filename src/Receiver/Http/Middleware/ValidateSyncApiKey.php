@@ -18,6 +18,12 @@ final class ValidateSyncApiKey
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        return $next($request);
+        app()->instance('user-team-sync.receiving', true);
+
+        try {
+            return $next($request);
+        } finally {
+            app()->instance('user-team-sync.receiving', false);
+        }
     }
 }

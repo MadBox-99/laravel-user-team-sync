@@ -8,15 +8,15 @@ use Exception;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Madbox99\UserTeamSync\Concerns\LogsOutboundSync;
 use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\SyncFailed;
 use Madbox99\UserTeamSync\Events\UserSynced;
-use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Publisher\PublisherService;
 
 final class CreateUserJob implements ShouldQueue
 {
-    use Queueable;
+    use LogsOutboundSync, Queueable;
 
     public int $tries;
 
@@ -29,8 +29,7 @@ final class CreateUserJob implements ShouldQueue
         public readonly string $role,
         public readonly string $ownerEmail,
     ) {
-        $this->tries = (int) config('user-team-sync.publisher.tries', 3);
-        $this->backoff = (int) config('user-team-sync.publisher.backoff', 60);
+        $this->initRetryConfig();
     }
 
     public function handle(PublisherService $service): void
@@ -47,6 +46,10 @@ final class CreateUserJob implements ShouldQueue
                 if ($teamsResponse->successful()) {
                     $teams = $teamsResponse->json('teams', []);
                     $teamIds = array_column($teams, 'id');
+                } else {
+                    Log::warning("UserTeamSync: Failed to fetch teams for {$this->ownerEmail} from {$appName}", [
+                        'status' => $teamsResponse->status(),
+                    ]);
                 }
 
                 $response = $http->post("{$app['url']}/api/create-user", [
@@ -57,39 +60,20 @@ final class CreateUserJob implements ShouldQueue
                     'team_ids' => $teamIds,
                 ]);
 
-                $this->log($appName, $response->successful(), $response->status(), $response->successful() ? null : $response->body());
+                $this->logOutbound(SyncAction::CreateUser, $this->email, $appName, ['name' => $this->name, 'role' => $this->role, 'owner_email' => $this->ownerEmail], $response->successful(), $response->status(), $response->successful() ? null : $response->body());
 
                 if ($response->successful()) {
-                    event(new UserSynced($this->email, $appName, ['action' => 'create']));
+                    UserSynced::dispatch($this->email, $appName, ['action' => 'create']);
                 } else {
-                    event(new SyncFailed($this->email, $appName, SyncAction::CreateUser->value, $response->body()));
+                    SyncFailed::dispatch($this->email, $appName, SyncAction::CreateUser->value, $response->body());
                 }
             } catch (Exception $e) {
                 Log::error("UserTeamSync: Exception during user creation for {$this->email} to {$appName}: {$e->getMessage()}");
 
-                $this->log($appName, false, null, $e->getMessage());
+                $this->logOutbound(SyncAction::CreateUser, $this->email, $appName, [], false, null, $e->getMessage());
 
                 throw $e;
             }
         }
-    }
-
-    private function log(string $appName, bool $success, ?int $httpStatus, ?string $error): void
-    {
-        if (! config('user-team-sync.logging.enabled')) {
-            return;
-        }
-
-        SyncLog::query()->create([
-            'action' => SyncAction::CreateUser->value,
-            'direction' => 'outbound',
-            'target_app' => $appName,
-            'email' => $this->email,
-            'payload' => ['name' => $this->name, 'role' => $this->role, 'owner_email' => $this->ownerEmail],
-            'status' => $success ? 'success' : 'failed',
-            'http_status' => $httpStatus,
-            'error_message' => $error,
-            'attempt' => $this->attempts(),
-        ]);
     }
 }

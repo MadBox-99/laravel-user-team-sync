@@ -41,9 +41,9 @@ return [
 
         'queue' => env('USER_TEAM_SYNC_QUEUE', 'default'),
         'connection' => env('USER_TEAM_SYNC_QUEUE_CONNECTION'),
-        'tries' => (int) env('USER_TEAM_SYNC_TRIES', 3),
-        'backoff' => (int) env('USER_TEAM_SYNC_BACKOFF', 60),
-        'timeout' => (int) env('USER_TEAM_SYNC_TIMEOUT', 10),
+        'tries' => env('USER_TEAM_SYNC_TRIES', 3),
+        'backoff' => env('USER_TEAM_SYNC_BACKOFF', 60),
+        'timeout' => env('USER_TEAM_SYNC_TIMEOUT', 10),
 
         'auto_observe' => true,
         'sync_fields' => ['email', 'role'],

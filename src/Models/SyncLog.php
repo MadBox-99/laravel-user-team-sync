@@ -8,17 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 final class SyncLog extends Model
 {
-    protected $fillable = [
-        'action',
-        'direction',
-        'target_app',
-        'email',
-        'payload',
-        'status',
-        'error_message',
-        'http_status',
-        'attempt',
-    ];
+    protected $guarded = [];
 
     protected function casts(): array
     {

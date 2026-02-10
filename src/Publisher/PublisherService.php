@@ -90,7 +90,7 @@ final class PublisherService
         ])->timeout(config('user-team-sync.publisher.timeout', 10));
 
         if (config('user-team-sync.publisher.skip_ssl_for_test_domains')
-            && str_ends_with((string) $app['url'], '.test')) {
+            && str_ends_with($app['url'], '.test')) {
             $http = $http->withoutVerifying();
         }
 

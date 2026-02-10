@@ -6,13 +6,15 @@ namespace Madbox99\UserTeamSync\Receiver\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Madbox99\UserTeamSync\Concerns\LogsInboundSync;
 use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\PasswordSynced;
-use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\SyncPasswordRequest;
 
 final class PasswordSyncController extends Controller
 {
+    use LogsInboundSync;
+
     public function __invoke(SyncPasswordRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -24,27 +26,10 @@ final class PasswordSyncController extends Controller
             ->where('email', $validated['email'])
             ->update(['password' => $validated['password_hash']]);
 
-        $this->log(SyncAction::SyncPassword, $validated['email']);
+        $this->logInbound(SyncAction::SyncPassword, $validated['email']);
 
-        event(new PasswordSynced($validated['email']));
+        PasswordSynced::dispatch($validated['email']);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Password synced successfully.',
-        ]);
-    }
-
-    private function log(SyncAction $action, string $email): void
-    {
-        if (! config('user-team-sync.logging.enabled')) {
-            return;
-        }
-
-        SyncLog::query()->create([
-            'action' => $action->value,
-            'direction' => 'inbound',
-            'email' => $email,
-            'status' => 'success',
-        ]);
+        return response()->json(['message' => 'Password synced successfully']);
     }
 }

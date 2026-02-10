@@ -9,18 +9,13 @@ use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
 
-function teamAuthHeaders(): array
-{
-    return ['Authorization' => 'Bearer test-api-key'];
-}
-
 it('creates a team', function (): void {
     Event::fake();
 
     $response = $this->postJson('/api/create-team', [
         'name' => 'New Team',
         'slug' => 'new-team',
-    ], teamAuthHeaders());
+    ], authHeaders());
 
     $response->assertStatus(201)
         ->assertJsonStructure(['message', 'team_id']);
@@ -43,7 +38,7 @@ it('creates a team and attaches user', function (): void {
         'name' => 'User Team',
         'slug' => 'user-team',
         'user_email' => 'team-user@example.com',
-    ], teamAuthHeaders());
+    ], authHeaders());
 
     $response->assertStatus(201);
 
@@ -58,13 +53,13 @@ it('rejects duplicate team slug', function (): void {
     $this->postJson('/api/create-team', [
         'name' => 'Another',
         'slug' => 'existing',
-    ], teamAuthHeaders())
+    ], authHeaders())
         ->assertStatus(422)
         ->assertJsonValidationErrors(['slug']);
 });
 
 it('validates required team fields', function (): void {
-    $this->postJson('/api/create-team', [], teamAuthHeaders())
+    $this->postJson('/api/create-team', [], authHeaders())
         ->assertStatus(422)
         ->assertJsonValidationErrors(['name', 'slug']);
 });
@@ -75,7 +70,7 @@ it('logs team creation to sync_logs', function (): void {
     $this->postJson('/api/create-team', [
         'name' => 'Log Team',
         'slug' => 'log-team',
-    ], teamAuthHeaders());
+    ], authHeaders());
 
     expect(SyncLog::where('action', 'create_team')->exists())->toBeTrue();
 });
@@ -91,7 +86,7 @@ it('returns user teams', function (): void {
     $team2 = Team::create(['name' => 'Team 2', 'slug' => 'team-2']);
     $user->teams()->attach([$team1->id, $team2->id]);
 
-    $response = $this->getJson('/api/user-teams?user_email=teams@example.com', teamAuthHeaders());
+    $response = $this->getJson('/api/user-teams?user_email=teams@example.com', authHeaders());
 
     $response->assertOk()
         ->assertJsonCount(2, 'teams');
@@ -104,13 +99,13 @@ it('returns empty teams for user without teams', function (): void {
         'password' => Hash::make('pass'),
     ]);
 
-    $response = $this->getJson('/api/user-teams?user_email=noteams@example.com', teamAuthHeaders());
+    $response = $this->getJson('/api/user-teams?user_email=noteams@example.com', authHeaders());
 
     $response->assertOk()
         ->assertJsonCount(0, 'teams');
 });
 
 it('validates user_email exists for get user teams', function (): void {
-    $this->getJson('/api/user-teams?user_email=nobody@example.com', teamAuthHeaders())
+    $this->getJson('/api/user-teams?user_email=nobody@example.com', authHeaders())
         ->assertStatus(422);
 });
