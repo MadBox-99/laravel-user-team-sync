@@ -25,7 +25,7 @@ final class CreateUserJob implements ShouldQueue
     public function __construct(
         public readonly string $email,
         public readonly string $name,
-        public readonly string $password,
+        public readonly string $passwordHash,
         public readonly string $role,
         public readonly string $ownerEmail,
     ) {
@@ -52,7 +52,7 @@ final class CreateUserJob implements ShouldQueue
                 $response = $http->post("{$app['url']}/api/create-user", [
                     'email' => $this->email,
                     'name' => $this->name,
-                    'password' => $this->password,
+                    'password_hash' => $this->passwordHash,
                     'role' => $this->role,
                     'team_ids' => $teamIds,
                 ]);

@@ -21,7 +21,7 @@ final class SyncUserRequest extends FormRequest
         return [
             'email' => ['required', 'email', 'exists:users,email'],
             'new_email' => ['nullable', 'email', 'unique:users,email'],
-            'password' => ['nullable', 'string'],
+            'password_hash' => ['nullable', 'string', 'min:60'],
             'role' => ['nullable', 'string'],
         ];
     }

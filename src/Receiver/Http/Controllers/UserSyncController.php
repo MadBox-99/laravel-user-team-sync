@@ -6,7 +6,6 @@ namespace Madbox99\UserTeamSync\Receiver\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\UserActiveToggled;
@@ -29,7 +28,7 @@ final class UserSyncController extends Controller
         $user = $userModel::query()->create([
             'email' => $validated['email'],
             'name' => $validated['name'],
-            'password' => Hash::make($validated['password']),
+            'password' => $validated['password_hash'],
             'is_active' => config('user-team-sync.receiver.default_active', false),
             'email_verified_at' => now(),
         ]);
@@ -72,8 +71,8 @@ final class UserSyncController extends Controller
             $updateData['email'] = $validated['new_email'];
         }
 
-        if (isset($validated['password'])) {
-            $updateData['password'] = Hash::make($validated['password']);
+        if (isset($validated['password_hash'])) {
+            $updateData['password'] = $validated['password_hash'];
         }
 
         if ($updateData !== []) {

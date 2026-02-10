@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync\Publisher;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
@@ -55,7 +56,7 @@ final class PublisherService
 
     public function createUser(string $email, string $name, string $password, string $role, string $ownerEmail): void
     {
-        $this->dispatchJob(new CreateUserJob($email, $name, $password, $role, $ownerEmail));
+        $this->dispatchJob(new CreateUserJob($email, $name, Hash::make($password), $role, $ownerEmail));
     }
 
     /**

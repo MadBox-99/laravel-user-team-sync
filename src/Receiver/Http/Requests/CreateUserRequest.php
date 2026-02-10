@@ -21,7 +21,7 @@ final class CreateUserRequest extends FormRequest
         return [
             'email' => ['required', 'email', 'unique:users,email'],
             'name' => ['required', 'string', 'max:255'],
-            'password' => ['required', 'string'],
+            'password_hash' => ['required', 'string', 'min:60'],
             'role' => ['nullable', 'string'],
             'team_ids' => ['nullable', 'array'],
             'team_ids.*' => ['integer', 'exists:teams,id'],
