@@ -40,14 +40,7 @@ final class TeamSyncController extends Controller
             }
         }
 
-        if (config('user-team-sync.logging.enabled')) {
-            SyncLog::query()->create([
-                'action' => SyncAction::CreateTeam->value,
-                'direction' => 'inbound',
-                'email' => $validated['user_email'] ?? '',
-                'status' => 'success',
-            ]);
-        }
+        $this->log(SyncAction::CreateTeam, $validated['user_email'] ?? '');
 
         Log::info('UserTeamSync: Team created via sync', [
             'team_id' => $team->id,
@@ -77,5 +70,19 @@ final class TeamSyncController extends Controller
             : collect();
 
         return response()->json(['teams' => $teams]);
+    }
+
+    private function log(SyncAction $action, string $email): void
+    {
+        if (! config('user-team-sync.logging.enabled')) {
+            return;
+        }
+
+        SyncLog::query()->create([
+            'action' => $action->value,
+            'direction' => 'inbound',
+            'email' => $email,
+            'status' => 'success',
+        ]);
     }
 }

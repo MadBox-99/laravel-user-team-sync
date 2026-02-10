@@ -33,11 +33,11 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
 
         $mode = config('user-team-sync.mode');
 
-        if ($mode === 'publisher' || $mode === 'both') {
+        if (in_array($mode, ['publisher', 'both'], true)) {
             $this->bootPublisher();
         }
 
-        if ($mode === 'receiver' || $mode === 'both') {
+        if (in_array($mode, ['receiver', 'both'], true)) {
             $this->bootReceiver();
         }
     }

@@ -7,8 +7,6 @@ namespace Madbox99\UserTeamSync\Publisher\Jobs;
 use Exception;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Madbox99\UserTeamSync\Enums\SyncAction;
@@ -19,9 +17,7 @@ use Madbox99\UserTeamSync\Publisher\PublisherService;
 
 final class CreateTeamJob implements ShouldQueue
 {
-    use InteractsWithQueue;
     use Queueable;
-    use SerializesModels;
 
     public int $tries;
 

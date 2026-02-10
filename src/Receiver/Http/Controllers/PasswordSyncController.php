@@ -24,20 +24,27 @@ final class PasswordSyncController extends Controller
             ->where('email', $validated['email'])
             ->update(['password' => $validated['password_hash']]);
 
-        if (config('user-team-sync.logging.enabled')) {
-            SyncLog::query()->create([
-                'action' => SyncAction::SyncPassword->value,
-                'direction' => 'inbound',
-                'email' => $validated['email'],
-                'status' => 'success',
-            ]);
-        }
+        $this->log(SyncAction::SyncPassword, $validated['email']);
 
         event(new PasswordSynced($validated['email']));
 
         return response()->json([
             'success' => true,
             'message' => 'Password synced successfully.',
+        ]);
+    }
+
+    private function log(SyncAction $action, string $email): void
+    {
+        if (! config('user-team-sync.logging.enabled')) {
+            return;
+        }
+
+        SyncLog::query()->create([
+            'action' => $action->value,
+            'direction' => 'inbound',
+            'email' => $email,
+            'status' => 'success',
         ]);
     }
 }

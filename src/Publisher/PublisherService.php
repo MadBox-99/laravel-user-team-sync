@@ -31,7 +31,7 @@ final class PublisherService
 
     public function getApiKey(string $appName): ?string
     {
-        $app = $this->getApps()[$appName] ?? null;
+        $app = $this->getApp($appName);
 
         if (! $app) {
             return null;
@@ -55,9 +55,7 @@ final class PublisherService
 
     public function createUser(string $email, string $name, string $password, string $role, string $ownerEmail): void
     {
-        $job = new CreateUserJob($email, $name, $password, $role, $ownerEmail);
-
-        $this->dispatchJob($job);
+        $this->dispatchJob(new CreateUserJob($email, $name, $password, $role, $ownerEmail));
     }
 
     /**
@@ -65,23 +63,17 @@ final class PublisherService
      */
     public function syncUser(string $email, array $changedData): void
     {
-        $job = new SyncUserJob($email, $changedData);
-
-        $this->dispatchJob($job);
+        $this->dispatchJob(new SyncUserJob($email, $changedData));
     }
 
     public function createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null): void
     {
-        $job = new CreateTeamJob($teamName, $userEmail, $slug, $userName);
-
-        $this->dispatchJob($job);
+        $this->dispatchJob(new CreateTeamJob($teamName, $userEmail, $slug, $userName));
     }
 
     public function toggleUserActive(string $userEmail, bool $isActive, string $appKey): void
     {
-        $job = new ToggleUserActiveJob($userEmail, $isActive, $appKey);
-
-        $this->dispatchJob($job);
+        $this->dispatchJob(new ToggleUserActiveJob($userEmail, $isActive, $appKey));
     }
 
     /**
