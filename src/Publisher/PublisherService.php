@@ -84,7 +84,9 @@ final class PublisherService
 
     public function createUser(string $email, string $name, string $password, string $role, string $ownerEmail): void
     {
-        $this->dispatchJob(new CreateUserJob($email, $name, Hash::make($password), $role, $ownerEmail));
+        $passwordHash = Hash::isHashed($password) ? $password : Hash::make($password);
+
+        $this->dispatchJob(new CreateUserJob($email, $name, $passwordHash, $role, $ownerEmail));
     }
 
     /**
@@ -97,7 +99,9 @@ final class PublisherService
 
     public function syncPassword(string $email, string $password): void
     {
-        $this->dispatchJob(new SyncPasswordJob($email, Hash::make($password)));
+        $passwordHash = Hash::isHashed($password) ? $password : Hash::make($password);
+
+        $this->dispatchJob(new SyncPasswordJob($email, $passwordHash));
     }
 
     public function createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null): void

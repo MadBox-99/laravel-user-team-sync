@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Madbox99\UserTeamSync\Models\SyncApp;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
+use Madbox99\UserTeamSync\Publisher\Jobs\SyncPasswordJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\ToggleUserActiveJob;
 use Madbox99\UserTeamSync\Publisher\PublisherService;
@@ -68,6 +69,43 @@ it('dispatches CreateUserJob with hashed password', function (): void {
             && $job->role === 'admin'
             && $job->ownerEmail === 'owner@example.com'
             && Hash::check('plain-password', $job->passwordHash);
+    });
+});
+
+it('does not double-hash when createUser receives pre-hashed password', function (): void {
+    Bus::fake();
+
+    $preHashed = Hash::make('my-password');
+
+    $service = app(PublisherService::class);
+    $service->createUser('test@example.com', 'Test', $preHashed, 'admin', 'owner@example.com');
+
+    Bus::assertDispatched(CreateUserJob::class, function (CreateUserJob $job) use ($preHashed): bool {
+        return $job->passwordHash === $preHashed;
+    });
+});
+
+it('does not double-hash when syncPassword receives pre-hashed password', function (): void {
+    Bus::fake();
+
+    $preHashed = Hash::make('my-password');
+
+    $service = app(PublisherService::class);
+    $service->syncPassword('test@example.com', $preHashed);
+
+    Bus::assertDispatched(SyncPasswordJob::class, function (SyncPasswordJob $job) use ($preHashed): bool {
+        return $job->passwordHash === $preHashed;
+    });
+});
+
+it('hashes plaintext password in syncPassword', function (): void {
+    Bus::fake();
+
+    $service = app(PublisherService::class);
+    $service->syncPassword('test@example.com', 'plain-password');
+
+    Bus::assertDispatched(SyncPasswordJob::class, function (SyncPasswordJob $job): bool {
+        return Hash::check('plain-password', $job->passwordHash);
     });
 });
 
