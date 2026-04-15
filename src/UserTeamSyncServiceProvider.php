@@ -6,6 +6,7 @@ namespace Madbox99\UserTeamSync;
 
 use Illuminate\Support\ServiceProvider;
 use Madbox99\UserTeamSync\Console\InstallCommand;
+use Madbox99\UserTeamSync\Console\UpdateCommand;
 use Madbox99\UserTeamSync\Publisher\Observers\UserSyncObserver;
 use Madbox99\UserTeamSync\Publisher\PublisherService;
 
@@ -23,7 +24,10 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
     public function boot(): void
     {
         if ($this->app->runningInConsole()) {
-            $this->commands([InstallCommand::class]);
+            $this->commands([
+                InstallCommand::class,
+                UpdateCommand::class,
+            ]);
         }
 
         $this->publishes([

@@ -56,20 +56,7 @@ abstract class TestCase extends Orchestra
             $table->timestamps();
         });
 
-        Schema::create('teams', function (Blueprint $table): void {
-            $table->id();
-            $table->string('name');
-            $table->string('slug')->unique();
-            $table->timestamps();
-        });
-
-        Schema::create('team_user', function (Blueprint $table): void {
-            $table->id();
-            $table->foreignId('team_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-        });
-
-        // Run the package migration
+        // teams, team_user, sync_logs, sync_apps are created by package migrations
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 }

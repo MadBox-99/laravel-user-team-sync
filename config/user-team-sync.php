@@ -20,7 +20,7 @@ return [
     */
     'models' => [
         'user' => env('USER_TEAM_SYNC_USER_MODEL', 'App\\Models\\User'),
-        'team' => env('USER_TEAM_SYNC_TEAM_MODEL', 'App\\Models\\Team'),
+        'team' => env('USER_TEAM_SYNC_TEAM_MODEL', 'Madbox99\\UserTeamSync\\Models\\Team'),
     ],
 
     /*
