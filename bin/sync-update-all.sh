@@ -71,11 +71,14 @@ for dir in "${PROJECTS[@]}"; do
     fi
 
     if $RUN_MIGRATE; then
-        if php "$dir/artisan" user-team-sync:update --force --ansi 2>&1 | tail -3; then
+        if php "$dir/artisan" migrate --force --ansi 2>&1 | tail -5; then
             echo "  ✓ migrated"
         else
-            echo "  ⚠ migration skipped (may need manual run)"
+            echo "  ⚠ migration failed (may need manual run)"
         fi
+
+        php "$dir/artisan" config:clear --ansi 2>/dev/null || true
+        php "$dir/artisan" route:clear --ansi 2>/dev/null || true
     fi
 
     SUCCESS=$((SUCCESS + 1))
