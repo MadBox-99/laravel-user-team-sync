@@ -71,7 +71,7 @@ for dir in "${PROJECTS[@]}"; do
     fi
 
     if $RUN_MIGRATE; then
-        if php artisan user-team-sync:update --force --ansi 2>&1 | tail -3; then
+        if php "$dir/artisan" user-team-sync:update --force --ansi 2>&1 | tail -3; then
             echo "  ✓ migrated"
         else
             echo "  ⚠ migration skipped (may need manual run)"
