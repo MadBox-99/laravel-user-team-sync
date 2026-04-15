@@ -14,7 +14,7 @@ final class EnsureUserHasActiveSubscription
     {
         $user = $request->user();
 
-        if ($user && $user->getAttribute('is_active') === false) {
+        if ($user && ! $user->getAttribute('is_active')) {
             $redirectUrl = config('user-team-sync.receiver.inactive_redirect_url');
 
             if ($redirectUrl) {
