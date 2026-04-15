@@ -72,6 +72,7 @@ return [
         'role_driver' => 'spatie',
         'default_role' => 'subscriber',
         'default_active' => false,
+        'inactive_redirect_url' => env('USER_TEAM_SYNC_INACTIVE_REDIRECT_URL'),
     ],
 
     /*
