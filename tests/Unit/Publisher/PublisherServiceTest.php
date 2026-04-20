@@ -156,6 +156,17 @@ it('makes http client with bearer token', function (): void {
     expect($client)->toBeInstanceOf(\Illuminate\Http\Client\PendingRequest::class);
 });
 
+it('detects .test host even with trailing slash or path', function (): void {
+    $service = app(PublisherService::class);
+    $reflection = new ReflectionMethod($service, 'isTestDomain');
+
+    expect($reflection->invoke($service, 'https://crm.test'))->toBeTrue()
+        ->and($reflection->invoke($service, 'https://crm.test/'))->toBeTrue()
+        ->and($reflection->invoke($service, 'https://crm.test/api/users'))->toBeTrue()
+        ->and($reflection->invoke($service, 'https://crm.example.com'))->toBeFalse()
+        ->and($reflection->invoke($service, 'not-a-url'))->toBeFalse();
+});
+
 // Database source tests
 
 it('returns all apps from database', function (): void {

@@ -12,6 +12,10 @@ final class EnsureUserHasActiveSubscription
 {
     public function handle(Request $request, Closure $next): Response
     {
+        if ($this->shouldBypass($request)) {
+            return $next($request);
+        }
+
         $user = $request->user();
 
         if ($user && ! $user->getAttribute('is_active')) {
@@ -25,5 +29,15 @@ final class EnsureUserHasActiveSubscription
         }
 
         return $next($request);
+    }
+
+    private function shouldBypass(Request $request): bool
+    {
+        $patterns = (array) config('user-team-sync.receiver.bypass_route_patterns', [
+            'filament.*.auth.logout',
+            'logout',
+        ]);
+
+        return $patterns !== [] && $request->routeIs(...$patterns);
     }
 }

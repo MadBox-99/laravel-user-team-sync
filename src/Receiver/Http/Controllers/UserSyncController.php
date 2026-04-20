@@ -6,6 +6,7 @@ namespace Madbox99\UserTeamSync\Receiver\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Madbox99\UserTeamSync\Concerns\LogsInboundSync;
 use Madbox99\UserTeamSync\Enums\SyncAction;
@@ -27,31 +28,35 @@ final class UserSyncController extends Controller
         /** @var class-string<\Illuminate\Database\Eloquent\Model> $userModel */
         $userModel = config('user-team-sync.models.user');
 
-        $user = $userModel::query()->create([
-            'email' => $validated['email'],
-            'name' => $validated['name'],
-            'password' => '',
-            'is_active' => config('user-team-sync.receiver.default_active', false),
-            'email_verified_at' => now(),
-        ]);
+        $user = DB::transaction(function () use ($userModel, $validated) {
+            $user = $userModel::query()->create([
+                'email' => $validated['email'],
+                'name' => $validated['name'],
+                'password' => '',
+                'is_active' => config('user-team-sync.receiver.default_active', false),
+                'email_verified_at' => now(),
+            ]);
 
-        // Bypass model casts to avoid double-hashing pre-hashed password
-        $userModel::query()->where($user->getKeyName(), $user->getKey())
-            ->update(['password' => $validated['password_hash']]);
-
-        $role = $validated['role'] ?? config('user-team-sync.receiver.default_role', 'subscriber');
-
-        if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'assignRole')) {
-            $user->assignRole($role);
-        } else {
+            // Bypass model casts to avoid double-hashing pre-hashed password
             $userModel::query()->where($user->getKeyName(), $user->getKey())
-                ->update(['role' => $role]);
-        }
+                ->update(['password' => $validated['password_hash']]);
 
-        $teamIds = $validated['team_ids'] ?? [];
-        if ($teamIds !== [] && method_exists($user, 'teams')) {
-            $user->teams()->sync($teamIds);
-        }
+            $role = $validated['role'] ?? config('user-team-sync.receiver.default_role', 'subscriber');
+
+            if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'assignRole')) {
+                $user->assignRole($role);
+            } else {
+                $userModel::query()->where($user->getKeyName(), $user->getKey())
+                    ->update(['role' => $role]);
+            }
+
+            $teamIds = $validated['team_ids'] ?? [];
+            if ($teamIds !== [] && method_exists($user, 'teams')) {
+                $user->teams()->sync($teamIds);
+            }
+
+            return $user;
+        });
 
         $this->logInbound(SyncAction::CreateUser, $validated['email']);
 
@@ -72,33 +77,35 @@ final class UserSyncController extends Controller
         /** @var class-string<\Illuminate\Database\Eloquent\Model> $userModel */
         $userModel = config('user-team-sync.models.user');
 
-        $user = $userModel::query()->where('email', $validated['email'])->first();
+        $updateData = isset($validated['new_email']) ? ['email' => $validated['new_email']] : [];
 
-        $updateData = [];
+        DB::transaction(function () use ($userModel, $validated, $updateData): void {
+            $user = $userModel::query()->where('email', $validated['email'])->lockForUpdate()->first();
 
-        if (isset($validated['new_email'])) {
-            $updateData['email'] = $validated['new_email'];
-        }
-
-        if ($updateData !== []) {
-            $user->fill($updateData);
-            $user->saveQuietly();
-        }
-
-        // Bypass model casts to avoid double-hashing pre-hashed password
-        if (isset($validated['password_hash'])) {
-            $userModel::query()->where($user->getKeyName(), $user->getKey())
-                ->update(['password' => $validated['password_hash']]);
-        }
-
-        if (isset($validated['role'])) {
-            if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'syncRoles')) {
-                $user->syncRoles([$validated['role']]);
-            } else {
-                $userModel::query()->where($user->getKeyName(), $user->getKey())
-                    ->update(['role' => $validated['role']]);
+            if (! $user) {
+                abort(404, 'User not found');
             }
-        }
+
+            if ($updateData !== []) {
+                $user->fill($updateData);
+                $user->saveQuietly();
+            }
+
+            // Bypass model casts to avoid double-hashing pre-hashed password
+            if (isset($validated['password_hash'])) {
+                $userModel::query()->where($user->getKeyName(), $user->getKey())
+                    ->update(['password' => $validated['password_hash']]);
+            }
+
+            if (isset($validated['role'])) {
+                if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'syncRoles')) {
+                    $user->syncRoles([$validated['role']]);
+                } else {
+                    $userModel::query()->where($user->getKeyName(), $user->getKey())
+                        ->update(['role' => $validated['role']]);
+                }
+            }
+        });
 
         $this->logInbound(SyncAction::SyncUser, $validated['email']);
 

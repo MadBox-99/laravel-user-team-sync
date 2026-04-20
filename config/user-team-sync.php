@@ -73,6 +73,20 @@ return [
         'default_role' => 'subscriber',
         'default_active' => false,
         'inactive_redirect_url' => env('USER_TEAM_SYNC_INACTIVE_REDIRECT_URL'),
+
+        /*
+        |----------------------------------------------------------------------
+        | Bypass Route Patterns
+        |----------------------------------------------------------------------
+        | Route name patterns that the EnsureUserHasActiveSubscription
+        | middleware allows through regardless of subscription status.
+        | Defaults cover Filament panel logout and a generic 'logout' route
+        | so inactive users can always sign out.
+        */
+        'bypass_route_patterns' => [
+            'filament.*.auth.logout',
+            'logout',
+        ],
     ],
 
     /*

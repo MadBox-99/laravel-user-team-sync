@@ -47,6 +47,26 @@ it('creates a team and attaches user', function (): void {
         ->and($user->teams->first()->slug)->toBe('user-team');
 });
 
+it('logs a warning when user_email is provided but user is not found', function (): void {
+    Event::fake();
+
+    Illuminate\Support\Facades\Log::spy();
+
+    $response = $this->postJson('/api/create-team', [
+        'name' => 'Orphan Team',
+        'slug' => 'orphan-team',
+        'user_email' => 'missing@example.com',
+    ], authHeaders());
+
+    $response->assertStatus(201);
+
+    Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+        ->withArgs(fn (string $msg, array $ctx): bool => str_contains($msg, 'user not attached')
+            && $ctx['user_email'] === 'missing@example.com'
+            && $ctx['reason'] === 'user not found'
+        );
+});
+
 it('rejects duplicate team slug', function (): void {
     Team::create(['name' => 'Existing', 'slug' => 'existing']);
 

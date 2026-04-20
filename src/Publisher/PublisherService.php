@@ -126,12 +126,18 @@ final class PublisherService
             'Accept' => 'application/json',
         ])->timeout(config('user-team-sync.publisher.timeout', 10));
 
-        if (config('user-team-sync.publisher.skip_ssl_for_test_domains')
-            && str_ends_with($app['url'], '.test')) {
+        if (config('user-team-sync.publisher.skip_ssl_for_test_domains') && $this->isTestDomain($app['url'])) {
             $http = $http->withoutVerifying();
         }
 
         return $http;
+    }
+
+    private function isTestDomain(string $url): bool
+    {
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && str_ends_with($host, '.test');
     }
 
     private function dispatchJob(object $job): void

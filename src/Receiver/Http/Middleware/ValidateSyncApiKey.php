@@ -6,6 +6,7 @@ namespace Madbox99\UserTeamSync\Receiver\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
 final class ValidateSyncApiKey
@@ -14,7 +15,13 @@ final class ValidateSyncApiKey
     {
         $expectedKey = config('user-team-sync.receiver.api_key');
 
-        if (! $expectedKey || $request->bearerToken() !== $expectedKey) {
+        if (! $expectedKey) {
+            Log::warning('UserTeamSync: receiver.api_key is not configured; all sync requests will be rejected with 401.');
+
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        if ($request->bearerToken() !== $expectedKey) {
             return response()->json(['error' => 'Unauthorized'], 401);
         }
 

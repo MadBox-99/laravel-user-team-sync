@@ -39,6 +39,12 @@ final class TeamSyncController extends Controller
             if ($user && method_exists($user, 'teams')) {
                 $user->teams()->attach($team);
                 $userAttached = true;
+            } else {
+                Log::warning('UserTeamSync: Team created but user not attached', [
+                    'team_id' => $team->id,
+                    'user_email' => $validated['user_email'],
+                    'reason' => $user ? 'user model has no teams() relation' : 'user not found',
+                ]);
             }
         }
 
