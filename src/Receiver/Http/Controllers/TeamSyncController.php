@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Madbox99\UserTeamSync\Concerns\LogsInboundSync;
 use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\TeamCreatedFromSync;
+use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\CreateTeamRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\GetUserTeamsRequest;
 
@@ -37,16 +38,23 @@ final class TeamSyncController extends Controller
         if (isset($validated['user_email'])) {
             $user = $userModel::query()->where('email', $validated['user_email'])->first();
             if ($user && method_exists($user, 'teams')) {
-                $user->teams()->attach($team);
+                $user->teams()->syncWithoutDetaching([$team->getKey()]);
                 $userAttached = true;
-            } else {
+            } elseif ($user) {
                 Log::warning('UserTeamSync: Team created but user not attached', [
                     'team_id' => $team->id,
                     'user_email' => $validated['user_email'],
-                    'reason' => $user ? 'user model has no teams() relation' : 'user not found',
+                    'reason' => 'user model has no teams() relation',
+                ]);
+            } else {
+                PendingTeamAttachment::query()->firstOrCreate([
+                    'user_email' => $validated['user_email'],
+                    'team_slug' => $team->slug,
                 ]);
             }
         }
+
+        $this->consumePendingAttachmentsForTeam($team, $userModel);
 
         $this->logInbound(SyncAction::CreateTeam, $validated['user_email'] ?? '');
 
@@ -78,5 +86,32 @@ final class TeamSyncController extends Controller
             : collect();
 
         return response()->json(['teams' => $teams]);
+    }
+
+    /**
+     * @param  class-string<\Illuminate\Database\Eloquent\Model>  $userModel
+     */
+    private function consumePendingAttachmentsForTeam(\Illuminate\Database\Eloquent\Model $team, string $userModel): void
+    {
+        $pending = PendingTeamAttachment::query()
+            ->where('team_slug', $team->slug)
+            ->get();
+
+        if ($pending->isEmpty()) {
+            return;
+        }
+
+        $users = $userModel::query()
+            ->whereIn('email', $pending->pluck('user_email')->all())
+            ->get()
+            ->keyBy('email');
+
+        foreach ($pending as $p) {
+            $user = $users->get($p->user_email);
+            if ($user && method_exists($user, 'teams')) {
+                $user->teams()->syncWithoutDetaching([$team->getKey()]);
+                $p->delete();
+            }
+        }
     }
 }

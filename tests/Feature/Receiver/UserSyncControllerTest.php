@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Madbox99\UserTeamSync\Events\UserActiveToggled;
 use Madbox99\UserTeamSync\Events\UserCreatedFromSync;
 use Madbox99\UserTeamSync\Events\UserSynced;
+use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
 use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
@@ -54,6 +55,40 @@ it('creates a user and attaches teams', function (): void {
 
     $user = User::where('email', 'jane@example.com')->first();
     expect($user->teams)->toHaveCount(2);
+});
+
+it('attaches teams by slug when team_ids are not provided', function (): void {
+    Event::fake();
+
+    $team = Team::create(['name' => 'Slug Team', 'slug' => 'slug-team']);
+
+    $this->postJson('/api/create-user', [
+        'email' => 'slug@example.com',
+        'name' => 'Slug User',
+        'password_hash' => Hash::make('pass'),
+        'team_slugs' => ['slug-team'],
+    ], authHeaders())->assertStatus(201);
+
+    $user = User::where('email', 'slug@example.com')->first();
+    expect($user->teams->pluck('id')->all())->toContain($team->id);
+});
+
+it('stores pending attachments for unknown slugs', function (): void {
+    Event::fake();
+
+    $this->postJson('/api/create-user', [
+        'email' => 'early-user@example.com',
+        'name' => 'Early User',
+        'password_hash' => Hash::make('pass'),
+        'team_slugs' => ['not-yet-synced'],
+    ], authHeaders())->assertStatus(201);
+
+    expect(PendingTeamAttachment::where('user_email', 'early-user@example.com')
+        ->where('team_slug', 'not-yet-synced')
+        ->exists())->toBeTrue();
+
+    $user = User::where('email', 'early-user@example.com')->first();
+    expect($user->teams)->toHaveCount(0);
 });
 
 it('does not hash the password again on create', function (): void {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Madbox99\UserTeamSync\Receiver\Http\Controllers;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,7 @@ use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\UserActiveToggled;
 use Madbox99\UserTeamSync\Events\UserCreatedFromSync;
 use Madbox99\UserTeamSync\Events\UserSynced;
+use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\CreateUserRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\SyncUserRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\ToggleUserActiveRequest;
@@ -54,6 +56,9 @@ final class UserSyncController extends Controller
             if ($teamIds !== [] && method_exists($user, 'teams')) {
                 $user->teams()->sync($teamIds);
             }
+
+            $this->attachBySlugs($user, $validated['team_slugs'] ?? []);
+            $this->consumePendingAttachments($user);
 
             return $user;
         });
@@ -131,5 +136,71 @@ final class UserSyncController extends Controller
         UserActiveToggled::dispatch($validated['email'], $validated['is_active']);
 
         return response()->json(['message' => 'User updated']);
+    }
+
+    /**
+     * @param  array<int, string>  $slugs
+     */
+    private function attachBySlugs(Model $user, array $slugs): void
+    {
+        if ($slugs === [] || ! method_exists($user, 'teams')) {
+            return;
+        }
+
+        /** @var class-string<Model> $teamModel */
+        $teamModel = config('user-team-sync.models.team');
+
+        $localTeams = $teamModel::query()->whereIn('slug', $slugs)->get();
+
+        if ($localTeams->isNotEmpty()) {
+            $user->teams()->syncWithoutDetaching($localTeams->pluck('id')->all());
+        }
+
+        $existingSlugs = $localTeams->pluck('slug')->all();
+        $missingSlugs = array_diff($slugs, $existingSlugs);
+
+        foreach ($missingSlugs as $slug) {
+            PendingTeamAttachment::query()->firstOrCreate([
+                'user_email' => $user->email,
+                'team_slug' => $slug,
+            ]);
+        }
+    }
+
+    private function consumePendingAttachments(Model $user): void
+    {
+        if (! method_exists($user, 'teams')) {
+            return;
+        }
+
+        $pending = PendingTeamAttachment::query()
+            ->where('user_email', $user->email)
+            ->get();
+
+        if ($pending->isEmpty()) {
+            return;
+        }
+
+        /** @var class-string<Model> $teamModel */
+        $teamModel = config('user-team-sync.models.team');
+
+        $teams = $teamModel::query()
+            ->whereIn('slug', $pending->pluck('team_slug')->all())
+            ->get()
+            ->keyBy('slug');
+
+        $attachedIds = [];
+        foreach ($pending as $p) {
+            $team = $teams->get($p->team_slug);
+            if (! $team) {
+                continue;
+            }
+            $attachedIds[] = $team->getKey();
+            $p->delete();
+        }
+
+        if ($attachedIds !== []) {
+            $user->teams()->syncWithoutDetaching($attachedIds);
+        }
     }
 }

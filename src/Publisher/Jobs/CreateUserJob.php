@@ -34,6 +34,8 @@ final class CreateUserJob implements ShouldQueue
 
     public function handle(PublisherService $service): void
     {
+        $teamSlugs = $this->resolveOwnerTeamSlugs();
+
         foreach ($service->getActiveApps() as $appName => $app) {
             try {
                 $http = $service->makeHttpClient($app);
@@ -58,6 +60,7 @@ final class CreateUserJob implements ShouldQueue
                     'password_hash' => $this->passwordHash,
                     'role' => $this->role,
                     'team_ids' => $teamIds,
+                    'team_slugs' => $teamSlugs,
                 ]);
 
                 $this->logOutbound(SyncAction::CreateUser, $this->email, $appName, ['name' => $this->name, 'role' => $this->role, 'owner_email' => $this->ownerEmail], $response->successful(), $response->status(), $response->successful() ? null : $response->body());
@@ -75,5 +78,26 @@ final class CreateUserJob implements ShouldQueue
                 throw $e;
             }
         }
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function resolveOwnerTeamSlugs(): array
+    {
+        /** @var class-string<\Illuminate\Database\Eloquent\Model>|null $userModel */
+        $userModel = config('user-team-sync.models.user');
+
+        if (! $userModel || ! class_exists($userModel)) {
+            return [];
+        }
+
+        $owner = $userModel::query()->where('email', $this->ownerEmail)->first();
+
+        if (! $owner || ! method_exists($owner, 'teams')) {
+            return [];
+        }
+
+        return $owner->teams()->pluck('teams.slug')->filter()->values()->all();
     }
 }

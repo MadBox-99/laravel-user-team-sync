@@ -25,6 +25,8 @@ final class CreateUserRequest extends FormRequest
             'role' => ['nullable', 'string'],
             'team_ids' => ['nullable', 'array'],
             'team_ids.*' => ['integer', 'exists:teams,id'],
+            'team_slugs' => ['nullable', 'array'],
+            'team_slugs.*' => ['string'],
         ];
     }
 }

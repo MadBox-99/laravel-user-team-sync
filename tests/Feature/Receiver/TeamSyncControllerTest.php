@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Madbox99\UserTeamSync\Events\TeamCreatedFromSync;
+use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
 use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
@@ -47,10 +48,8 @@ it('creates a team and attaches user', function (): void {
         ->and($user->teams->first()->slug)->toBe('user-team');
 });
 
-it('logs a warning when user_email is provided but user is not found', function (): void {
+it('stores a pending attachment when user_email is provided but user does not exist yet', function (): void {
     Event::fake();
-
-    Illuminate\Support\Facades\Log::spy();
 
     $response = $this->postJson('/api/create-team', [
         'name' => 'Orphan Team',
@@ -60,11 +59,54 @@ it('logs a warning when user_email is provided but user is not found', function 
 
     $response->assertStatus(201);
 
-    Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
-        ->withArgs(fn (string $msg, array $ctx): bool => str_contains($msg, 'user not attached')
-            && $ctx['user_email'] === 'missing@example.com'
-            && $ctx['reason'] === 'user not found'
-        );
+    expect(PendingTeamAttachment::where('user_email', 'missing@example.com')
+        ->where('team_slug', 'orphan-team')
+        ->exists())->toBeTrue();
+});
+
+it('consumes matching pending attachments when the user is later created', function (): void {
+    Event::fake();
+
+    PendingTeamAttachment::create([
+        'user_email' => 'late@example.com',
+        'team_slug' => 'late-team',
+    ]);
+
+    Team::create(['name' => 'Late Team', 'slug' => 'late-team']);
+
+    $this->postJson('/api/create-user', [
+        'email' => 'late@example.com',
+        'name' => 'Late User',
+        'password_hash' => Hash::make('pass'),
+    ], authHeaders())->assertStatus(201);
+
+    $user = User::where('email', 'late@example.com')->first();
+    expect($user->teams->pluck('slug')->all())->toContain('late-team')
+        ->and(PendingTeamAttachment::where('user_email', 'late@example.com')->exists())->toBeFalse();
+});
+
+it('consumes matching pending attachments when the team arrives later', function (): void {
+    Event::fake();
+
+    User::create([
+        'name' => 'Early',
+        'email' => 'early@example.com',
+        'password' => Hash::make('pass'),
+    ]);
+
+    PendingTeamAttachment::create([
+        'user_email' => 'early@example.com',
+        'team_slug' => 'delayed-team',
+    ]);
+
+    $this->postJson('/api/create-team', [
+        'name' => 'Delayed Team',
+        'slug' => 'delayed-team',
+    ], authHeaders())->assertStatus(201);
+
+    $user = User::where('email', 'early@example.com')->first();
+    expect($user->teams->pluck('slug')->all())->toContain('delayed-team')
+        ->and(PendingTeamAttachment::where('user_email', 'early@example.com')->exists())->toBeFalse();
 });
 
 it('rejects duplicate team slug', function (): void {
