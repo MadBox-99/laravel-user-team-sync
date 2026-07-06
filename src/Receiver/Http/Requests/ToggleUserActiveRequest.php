@@ -19,7 +19,10 @@ final class ToggleUserActiveRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'email', 'exists:users,email'],
+            // No exists:users rule: an activation toggle may legitimately arrive
+            // before the user has been synced to this app. The controller stores
+            // it as a pending activation and applies it once the user is created.
+            'email' => ['required', 'email'],
             'is_active' => ['required', 'boolean'],
         ];
     }

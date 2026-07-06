@@ -8,6 +8,7 @@ use Madbox99\UserTeamSync\Events\UserActiveToggled;
 use Madbox99\UserTeamSync\Events\UserCreatedFromSync;
 use Madbox99\UserTeamSync\Events\UserSynced;
 use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
+use Madbox99\UserTeamSync\Models\PendingUserActivation;
 use Madbox99\UserTeamSync\Models\SyncLog;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
@@ -278,4 +279,47 @@ it('logs toggle active to sync_logs', function (): void {
     ], authHeaders());
 
     expect(SyncLog::where('email', 'toggle-log@example.com')->where('action', 'toggle_active')->exists())->toBeTrue();
+});
+
+it('stores a pending activation when toggling a user that does not exist yet', function (): void {
+    $response = $this->postJson('/api/toggle-user-active', [
+        'email' => 'not-yet@example.com',
+        'is_active' => true,
+    ], authHeaders());
+
+    $response->assertOk();
+
+    expect(User::where('email', 'not-yet@example.com')->exists())->toBeFalse();
+    expect(PendingUserActivation::where('user_email', 'not-yet@example.com')->first())
+        ->not->toBeNull()
+        ->is_active->toBeTrue();
+});
+
+it('keeps only the latest pending activation state per email', function (): void {
+    $this->postJson('/api/toggle-user-active', ['email' => 'late@example.com', 'is_active' => true], authHeaders());
+    $this->postJson('/api/toggle-user-active', ['email' => 'late@example.com', 'is_active' => false], authHeaders());
+
+    expect(PendingUserActivation::where('user_email', 'late@example.com')->count())->toBe(1)
+        ->and(PendingUserActivation::where('user_email', 'late@example.com')->first()->is_active)->toBeFalse();
+});
+
+it('applies and clears the pending activation when the user is later created', function (): void {
+    // Activation toggle arrives before the user is synced to this app.
+    $this->postJson('/api/toggle-user-active', [
+        'email' => 'ordered@example.com',
+        'is_active' => true,
+    ], authHeaders());
+
+    // Then the create-user event arrives.
+    $this->postJson('/api/create-user', [
+        'email' => 'ordered@example.com',
+        'name' => 'Ordered User',
+        'password_hash' => Hash::make('secret'),
+    ], authHeaders())->assertStatus(201);
+
+    $user = User::where('email', 'ordered@example.com')->first();
+
+    expect($user)->not->toBeNull()
+        ->and($user->is_active)->toBeTrue()
+        ->and(PendingUserActivation::where('user_email', 'ordered@example.com')->exists())->toBeFalse();
 });

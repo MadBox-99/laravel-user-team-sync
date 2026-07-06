@@ -15,6 +15,7 @@ use Madbox99\UserTeamSync\Events\UserActiveToggled;
 use Madbox99\UserTeamSync\Events\UserCreatedFromSync;
 use Madbox99\UserTeamSync\Events\UserSynced;
 use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
+use Madbox99\UserTeamSync\Models\PendingUserActivation;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\CreateUserRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\SyncUserRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\ToggleUserActiveRequest;
@@ -59,6 +60,7 @@ final class UserSyncController extends Controller
 
             $this->attachBySlugs($user, $validated['team_slugs'] ?? []);
             $this->consumePendingAttachments($user);
+            $this->consumePendingActivation($user);
 
             return $user;
         });
@@ -128,8 +130,19 @@ final class UserSyncController extends Controller
         /** @var class-string<\Illuminate\Database\Eloquent\Model> $userModel */
         $userModel = config('user-team-sync.models.user');
 
-        $userModel::query()->where('email', $validated['email'])
+        $affected = $userModel::query()->where('email', $validated['email'])
             ->update(['is_active' => $validated['is_active']]);
+
+        // The user may not have been synced to this app yet (the activation
+        // toggle can arrive before the create-user event). Persist the desired
+        // state so create() can apply it once the user shows up — otherwise the
+        // update matches zero rows and the activation is silently lost.
+        if ($affected === 0) {
+            PendingUserActivation::query()->updateOrCreate(
+                ['user_email' => $validated['email']],
+                ['is_active' => $validated['is_active']],
+            );
+        }
 
         $this->logInbound(SyncAction::ToggleActive, $validated['email']);
 
@@ -202,5 +215,28 @@ final class UserSyncController extends Controller
         if ($attachedIds !== []) {
             $user->teams()->syncWithoutDetaching($attachedIds);
         }
+    }
+
+    /**
+     * Apply an activation state that arrived before this user was created (see
+     * toggleActive()), then discard the pending record so it is applied once.
+     */
+    private function consumePendingActivation(Model $user): void
+    {
+        $pending = PendingUserActivation::query()
+            ->where('user_email', $user->email)
+            ->first();
+
+        if (! $pending instanceof PendingUserActivation) {
+            return;
+        }
+
+        /** @var class-string<Model> $userModel */
+        $userModel = config('user-team-sync.models.user');
+
+        $userModel::query()->where($user->getKeyName(), $user->getKey())
+            ->update(['is_active' => $pending->is_active]);
+
+        $pending->delete();
     }
 }
