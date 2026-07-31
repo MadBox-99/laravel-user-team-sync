@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -33,28 +34,9 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Drop unique constraint if it exists (defensive: may have been created elsewhere)
-        if (Schema::hasColumn('users', 'uuid')) {
-            try {
-                Schema::table('users', function (Blueprint $blueprint): void {
-                    $blueprint->dropUnique(['uuid']);
-                });
-            } catch (\Exception) {
-                // Index may not exist if created by a different migration or manually without constraint
-            }
-        }
+        $this->dropUniqueIfExists('users');
+        $this->dropUniqueIfExists('teams');
 
-        if (Schema::hasColumn('teams', 'uuid')) {
-            try {
-                Schema::table('teams', function (Blueprint $blueprint): void {
-                    $blueprint->dropUnique(['uuid']);
-                });
-            } catch (\Exception) {
-                // Index may not exist if created by a different migration or manually without constraint
-            }
-        }
-
-        // Drop the columns
         if (Schema::hasColumn('users', 'uuid')) {
             Schema::table('users', function (Blueprint $blueprint): void {
                 $blueprint->dropColumn('uuid');
@@ -64,6 +46,22 @@ return new class extends Migration
         if (Schema::hasColumn('teams', 'uuid')) {
             Schema::table('teams', function (Blueprint $blueprint): void {
                 $blueprint->dropColumn('uuid');
+            });
+        }
+    }
+
+    private function dropUniqueIfExists(string $table): void
+    {
+        if (! Schema::hasColumn($table, 'uuid')) {
+            return;
+        }
+
+        $hasUniqueIndex = Collection::make(Schema::getIndexes($table))
+            ->contains(fn (array $index): bool => $index['name'] === "{$table}_uuid_unique");
+
+        if ($hasUniqueIndex) {
+            Schema::table($table, function (Blueprint $blueprint): void {
+                $blueprint->dropUnique(['uuid']);
             });
         }
     }
