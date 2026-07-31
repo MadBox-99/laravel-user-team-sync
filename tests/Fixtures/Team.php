@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Team extends Model
 {
     protected $fillable = [
+        'uuid',
         'name',
         'slug',
     ];
