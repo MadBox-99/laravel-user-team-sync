@@ -19,6 +19,7 @@ final class CreateTeamRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'uuid' => ['nullable', 'uuid', 'unique:teams,uuid'],
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:teams,slug'],
             'user_email' => ['sometimes', 'email'],

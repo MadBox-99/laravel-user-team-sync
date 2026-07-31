@@ -19,6 +19,7 @@ final class CreateUserRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'uuid' => ['nullable', 'uuid', 'unique:users,uuid'],
             'email' => ['required', 'email', 'unique:users,email'],
             'name' => ['required', 'string', 'max:255'],
             'password_hash' => ['required', 'string', 'min:60'],

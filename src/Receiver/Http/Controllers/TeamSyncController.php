@@ -29,6 +29,7 @@ final class TeamSyncController extends Controller
         $userModel = config('user-team-sync.models.user');
 
         $team = $teamModel::query()->create([
+            'uuid' => $validated['uuid'] ?? null,
             'name' => $validated['name'],
             'slug' => $validated['slug'],
         ]);

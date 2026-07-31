@@ -323,3 +323,26 @@ it('applies and clears the pending activation when the user is later created', f
         ->and($user->is_active)->toBeTrue()
         ->and(PendingUserActivation::where('user_email', 'ordered@example.com')->exists())->toBeFalse();
 });
+
+it('stores the uuid supplied with a new user', function (): void {
+    $uuid = (string) Illuminate\Support\Str::uuid();
+
+    $this->postJson('/api/create-user', [
+        'email' => 'uuid-user@example.com',
+        'name' => 'Uuid User',
+        'password_hash' => Hash::make('secret'),
+        'uuid' => $uuid,
+    ], authHeaders())->assertStatus(201);
+
+    expect(User::where('email', 'uuid-user@example.com')->first()->uuid)->toBe($uuid);
+});
+
+it('still creates a user when no uuid is supplied', function (): void {
+    $this->postJson('/api/create-user', [
+        'email' => 'legacy-user@example.com',
+        'name' => 'Legacy User',
+        'password_hash' => Hash::make('secret'),
+    ], authHeaders())->assertStatus(201);
+
+    expect(User::where('email', 'legacy-user@example.com')->first()->uuid)->toBeNull();
+});

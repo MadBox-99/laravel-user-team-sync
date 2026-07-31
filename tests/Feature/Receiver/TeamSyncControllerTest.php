@@ -171,3 +171,24 @@ it('validates user_email exists for get user teams', function (): void {
     $this->getJson('/api/user-teams?user_email=nobody@example.com', authHeaders())
         ->assertStatus(422);
 });
+
+it('stores the uuid supplied with a new team', function (): void {
+    $uuid = (string) Illuminate\Support\Str::uuid();
+
+    $this->postJson('/api/create-team', [
+        'name' => 'Uuid Team',
+        'slug' => 'uuid-team',
+        'uuid' => $uuid,
+    ], authHeaders())->assertStatus(201);
+
+    expect(Team::where('slug', 'uuid-team')->first()->uuid)->toBe($uuid);
+});
+
+it('still creates a team when no uuid is supplied', function (): void {
+    $this->postJson('/api/create-team', [
+        'name' => 'Legacy Team',
+        'slug' => 'legacy-team',
+    ], authHeaders())->assertStatus(201);
+
+    expect(Team::where('slug', 'legacy-team')->first()->uuid)->toBeNull();
+});

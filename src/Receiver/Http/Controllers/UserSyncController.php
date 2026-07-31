@@ -33,6 +33,7 @@ final class UserSyncController extends Controller
 
         $user = DB::transaction(function () use ($userModel, $validated) {
             $user = $userModel::query()->create([
+                'uuid' => $validated['uuid'] ?? null,
                 'email' => $validated['email'],
                 'name' => $validated['name'],
                 'password' => '',
