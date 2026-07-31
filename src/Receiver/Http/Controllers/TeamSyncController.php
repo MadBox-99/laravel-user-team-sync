@@ -29,10 +29,17 @@ final class TeamSyncController extends Controller
         $userModel = config('user-team-sync.models.user');
 
         $team = $teamModel::query()->create([
-            'uuid' => $validated['uuid'] ?? null,
             'name' => $validated['name'],
             'slug' => $validated['slug'],
         ]);
+
+        // Bypass $fillable: a receiver-supplied Team model is not under this
+        // package's control, and a model that has not added 'uuid' to
+        // $fillable must still persist it rather than silently discarding it
+        // while the request reports success.
+        if (isset($validated['uuid'])) {
+            $team->forceFill(['uuid' => $validated['uuid']])->saveQuietly();
+        }
 
         $userAttached = false;
 

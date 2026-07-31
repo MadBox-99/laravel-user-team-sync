@@ -192,3 +192,24 @@ it('still creates a team when no uuid is supplied', function (): void {
 
     expect(Team::where('slug', 'legacy-team')->first()->uuid)->toBeNull();
 });
+
+it('persists the uuid even when the configured Team model has not added it to $fillable', function (): void {
+    config(['user-team-sync.models.team' => Madbox99\UserTeamSync\Tests\Fixtures\TeamWithoutUuidFillable::class]);
+
+    // Precondition: this stand-in genuinely cannot mass-assign uuid, which is
+    // the real-world condition on a receiver app supplying its own Team model
+    // without 'uuid' in $fillable. Without this guard the test could silently
+    // degrade into the already-covered default-fixture case.
+    $model = new Madbox99\UserTeamSync\Tests\Fixtures\TeamWithoutUuidFillable;
+    expect($model->isFillable('uuid'))->toBeFalse();
+
+    $uuid = (string) Illuminate\Support\Str::uuid();
+
+    $this->postJson('/api/create-team', [
+        'name' => 'Unfillable Uuid Team',
+        'slug' => 'unfillable-uuid-team',
+        'uuid' => $uuid,
+    ], authHeaders())->assertStatus(201);
+
+    expect(Madbox99\UserTeamSync\Tests\Fixtures\TeamWithoutUuidFillable::where('slug', 'unfillable-uuid-team')->first()->uuid)->toBe($uuid);
+});

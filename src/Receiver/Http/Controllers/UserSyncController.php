@@ -33,13 +33,20 @@ final class UserSyncController extends Controller
 
         $user = DB::transaction(function () use ($userModel, $validated) {
             $user = $userModel::query()->create([
-                'uuid' => $validated['uuid'] ?? null,
                 'email' => $validated['email'],
                 'name' => $validated['name'],
                 'password' => '',
                 'is_active' => config('user-team-sync.receiver.default_active', false),
                 'email_verified_at' => now(),
             ]);
+
+            // Bypass $fillable: the host app's User model is not under this
+            // package's control, and a receiver whose model has not added
+            // 'uuid' to $fillable must still persist it rather than silently
+            // discarding it while the request reports success.
+            if (isset($validated['uuid'])) {
+                $user->forceFill(['uuid' => $validated['uuid']])->saveQuietly();
+            }
 
             // Bypass model casts to avoid double-hashing pre-hashed password
             $userModel::query()->where($user->getKeyName(), $user->getKey())

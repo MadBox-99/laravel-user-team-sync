@@ -346,3 +346,25 @@ it('still creates a user when no uuid is supplied', function (): void {
 
     expect(User::where('email', 'legacy-user@example.com')->first()->uuid)->toBeNull();
 });
+
+it('persists the uuid even when the host app\'s User model has not added it to $fillable', function (): void {
+    config(['user-team-sync.models.user' => Madbox99\UserTeamSync\Tests\Fixtures\UserWithoutUuidFillable::class]);
+
+    // Precondition: this stand-in genuinely cannot mass-assign uuid, which is
+    // the real-world condition on a receiver app that has not yet added
+    // 'uuid' to its own User model's $fillable. Without this guard the test
+    // could silently degrade into the already-covered default-fixture case.
+    $model = new Madbox99\UserTeamSync\Tests\Fixtures\UserWithoutUuidFillable;
+    expect($model->isFillable('uuid'))->toBeFalse();
+
+    $uuid = (string) Illuminate\Support\Str::uuid();
+
+    $this->postJson('/api/create-user', [
+        'email' => 'unfillable-uuid-user@example.com',
+        'name' => 'Unfillable Uuid User',
+        'password_hash' => Hash::make('secret'),
+        'uuid' => $uuid,
+    ], authHeaders())->assertStatus(201);
+
+    expect(Madbox99\UserTeamSync\Tests\Fixtures\UserWithoutUuidFillable::where('email', 'unfillable-uuid-user@example.com')->first()->uuid)->toBe($uuid);
+});
