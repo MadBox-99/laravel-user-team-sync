@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Facades\Route;
+use Madbox99\UserTeamSync\Receiver\Http\Controllers\IdentityAuditController;
 use Madbox99\UserTeamSync\Receiver\Http\Controllers\PasswordSyncController;
 use Madbox99\UserTeamSync\Receiver\Http\Controllers\TeamSyncController;
 use Madbox99\UserTeamSync\Receiver\Http\Controllers\UserSyncController;
@@ -20,4 +21,5 @@ Route::prefix(config('user-team-sync.receiver.route_prefix', 'api'))
         Route::post('/create-team', [TeamSyncController::class, 'create']);
         Route::get('/user-teams', [TeamSyncController::class, 'getUserTeams']);
         Route::post('/sync-password', PasswordSyncController::class);
+        Route::get('/identity-audit', IdentityAuditController::class);
     });
