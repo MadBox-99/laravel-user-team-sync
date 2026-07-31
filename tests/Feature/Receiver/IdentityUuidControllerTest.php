@@ -58,7 +58,12 @@ it('is idempotent', function (): void {
 
 it('does not overwrite a uuid that is already set to a different value', function (): void {
     $existing = (string) Str::uuid();
-    Team::create(['name' => 'Acme', 'slug' => 'acme', 'uuid' => $existing]);
+    $team = Team::create(['name' => 'Acme', 'slug' => 'acme', 'uuid' => $existing]);
+
+    // Precondition: the record genuinely already carries a uuid before we
+    // POST a different one, otherwise this test would also pass through the
+    // "missing uuid" branch and never reach the conflict check.
+    expect($team->refresh()->uuid)->toBe($existing);
 
     $response = $this->postJson('/api/identity-uuids', [
         'users' => [],
