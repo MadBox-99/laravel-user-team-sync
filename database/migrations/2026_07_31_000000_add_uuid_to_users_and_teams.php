@@ -33,18 +33,28 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('users', function (Blueprint $blueprint): void {
-            if (Schema::hasColumn('users', 'uuid')) {
-                $blueprint->dropUnique(['uuid']);
+        // Drop unique constraint if it exists (defensive: may have been created elsewhere)
+        if (Schema::hasColumn('users', 'uuid')) {
+            try {
+                Schema::table('users', function (Blueprint $blueprint): void {
+                    $blueprint->dropUnique(['uuid']);
+                });
+            } catch (\Exception) {
+                // Index may not exist if created by a different migration or manually without constraint
             }
-        });
+        }
 
-        Schema::table('teams', function (Blueprint $blueprint): void {
-            if (Schema::hasColumn('teams', 'uuid')) {
-                $blueprint->dropUnique(['uuid']);
+        if (Schema::hasColumn('teams', 'uuid')) {
+            try {
+                Schema::table('teams', function (Blueprint $blueprint): void {
+                    $blueprint->dropUnique(['uuid']);
+                });
+            } catch (\Exception) {
+                // Index may not exist if created by a different migration or manually without constraint
             }
-        });
+        }
 
+        // Drop the columns
         if (Schema::hasColumn('users', 'uuid')) {
             Schema::table('users', function (Blueprint $blueprint): void {
                 $blueprint->dropColumn('uuid');
