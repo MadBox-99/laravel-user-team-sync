@@ -2,9 +2,23 @@
 
 declare(strict_types=1);
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
+
+/**
+ * Absolute path to the migration under test.
+ *
+ * Deliberately not `database_path()`: under Testbench that resolves to the
+ * skeleton app inside `vendor/`, which can hold a stale published copy of this
+ * migration. Requiring it from the package directory guarantees the rollback
+ * tests exercise the code this package actually ships.
+ */
+function uuidMigrationPath(): string
+{
+    return __DIR__.'/../../../database/migrations/2026_07_31_000000_add_uuid_to_users_and_teams.php';
+}
 
 it('adds a nullable uuid column to users and teams', function (): void {
     expect(Schema::hasColumn('users', 'uuid'))->toBeTrue()
@@ -40,7 +54,7 @@ it('down migration rolls back uuid columns successfully', function (): void {
         ->and(Schema::hasColumn('teams', 'uuid'))->toBeTrue();
 
     // Get the migration and run down
-    $migration = require database_path('migrations/2026_07_31_000000_add_uuid_to_users_and_teams.php');
+    $migration = require uuidMigrationPath();
     $migration->down();
 
     // Verify columns are removed
@@ -51,25 +65,33 @@ it('down migration rolls back uuid columns successfully', function (): void {
     $migration->up();
 });
 
-it('down migration checks for index before dropping', function (): void {
-    // The down() method must defensively check if the uuid unique index exists
-    // before attempting to drop it. The dropUniqueIfExists() method uses
-    // Schema::getIndexes() to verify the index exists before calling dropUnique().
+it('down migration rolls back when the uuid unique index is missing', function (): void {
+    $migration = require uuidMigrationPath();
 
-    $migration = require database_path('migrations/2026_07_31_000000_add_uuid_to_users_and_teams.php');
+    // Construct the exact state the guard in down() exists for: an app whose
+    // `uuid` column is present but whose unique index is not. Dropping the
+    // index unconditionally here crashes on MySQL 8 with error 1091.
+    Schema::table('users', function (Blueprint $blueprint): void {
+        $blueprint->dropUnique(['uuid']);
+    });
 
-    // Verify initial state: columns and indexes exist from test setup
-    expect(Schema::hasColumn('users', 'uuid'))->toBeTrue()
+    Schema::table('teams', function (Blueprint $blueprint): void {
+        $blueprint->dropUnique(['uuid']);
+    });
+
+    // Prove the setup above really happened — column kept, index gone. Without
+    // this the test could pass against a silently failed strip.
+    expect(array_column(Schema::getIndexes('users'), 'name'))->not->toContain('users_uuid_unique')
+        ->and(Schema::hasColumn('users', 'uuid'))->toBeTrue()
+        ->and(array_column(Schema::getIndexes('teams'), 'name'))->not->toContain('teams_uuid_unique')
         ->and(Schema::hasColumn('teams', 'uuid'))->toBeTrue();
 
-    // Call down() - it will check for indexes using Schema::getIndexes()
-    // and only call dropUnique() if the index actually exists
+    // Any exception thrown here fails the test — no catch, by design.
     $migration->down();
 
-    // Verify cleanup worked
     expect(Schema::hasColumn('users', 'uuid'))->toBeFalse()
         ->and(Schema::hasColumn('teams', 'uuid'))->toBeFalse();
 
-    // Restore for cleanup
+    // Restore the schema for any test that shares this connection.
     $migration->up();
 });
