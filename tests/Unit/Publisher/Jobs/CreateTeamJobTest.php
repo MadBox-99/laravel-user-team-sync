@@ -74,3 +74,29 @@ it('logs team creation to sync_logs', function (): void {
         ->and($log->direction)->toBe('outbound')
         ->and($log->status)->toBe('success');
 });
+
+it('sends the uuid in the create-team payload', function (): void {
+    Illuminate\Support\Facades\Http::fake([
+        'https://crm.test/api/create-team' => Illuminate\Support\Facades\Http::response(['team_id' => 1], 201),
+    ]);
+
+    config()->set('user-team-sync.publisher.app_source', 'config');
+    config()->set('user-team-sync.publisher.apps', [
+        'crm' => ['url' => 'https://crm.test', 'api_key' => 'k', 'active' => true],
+    ]);
+
+    $uuid = (string) Illuminate\Support\Str::uuid();
+
+    (new Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob(
+        teamName: 'Acme',
+        userEmail: 'owner@example.com',
+        slug: 'acme',
+        userName: 'Owner',
+        uuid: $uuid,
+    ))->handle(app(Madbox99\UserTeamSync\Publisher\PublisherService::class));
+
+    Illuminate\Support\Facades\Http::assertSent(
+        fn ($request): bool => $request->url() === 'https://crm.test/api/create-team'
+            && $request['uuid'] === $uuid
+    );
+});

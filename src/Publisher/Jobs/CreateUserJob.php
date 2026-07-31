@@ -28,6 +28,7 @@ final class CreateUserJob implements ShouldQueue
         public readonly string $passwordHash,
         public readonly string $role,
         public readonly string $ownerEmail,
+        public readonly ?string $uuid = null,
     ) {
         $this->initRetryConfig();
     }
@@ -55,6 +56,7 @@ final class CreateUserJob implements ShouldQueue
                 }
 
                 $response = $http->post("{$app['url']}/api/create-user", [
+                    'uuid' => $this->uuid,
                     'email' => $this->email,
                     'name' => $this->name,
                     'password_hash' => $this->passwordHash,

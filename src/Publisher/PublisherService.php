@@ -82,11 +82,11 @@ final class PublisherService
         return $this->getApps()[$appName] ?? null;
     }
 
-    public function createUser(string $email, string $name, string $password, string $role, string $ownerEmail): void
+    public function createUser(string $email, string $name, string $password, string $role, string $ownerEmail, ?string $uuid = null): void
     {
         $passwordHash = Hash::isHashed($password) ? $password : Hash::make($password);
 
-        $this->dispatchJob(new CreateUserJob($email, $name, $passwordHash, $role, $ownerEmail));
+        $this->dispatchJob(new CreateUserJob($email, $name, $passwordHash, $role, $ownerEmail, $uuid));
     }
 
     /**
@@ -104,9 +104,9 @@ final class PublisherService
         $this->dispatchJob(new SyncPasswordJob($email, $passwordHash));
     }
 
-    public function createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null): void
+    public function createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null, ?string $uuid = null): void
     {
-        $this->dispatchJob(new CreateTeamJob($teamName, $userEmail, $slug, $userName));
+        $this->dispatchJob(new CreateTeamJob($teamName, $userEmail, $slug, $userName, $uuid));
     }
 
     public function toggleUserActive(string $userEmail, bool $isActive, string $appKey): void

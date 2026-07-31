@@ -30,6 +30,7 @@ final class CreateTeamJob implements ShouldQueue
         public readonly string $userEmail,
         ?string $slug = null,
         public readonly ?string $userName = null,
+        public readonly ?string $uuid = null,
     ) {
         $this->slug = $slug ?? Str::slug($teamName);
         $this->initRetryConfig();
@@ -42,6 +43,7 @@ final class CreateTeamJob implements ShouldQueue
                 $http = $service->makeHttpClient($app);
 
                 $response = $http->post("{$app['url']}/api/create-team", [
+                    'uuid' => $this->uuid,
                     'name' => $this->teamName,
                     'slug' => $this->slug,
                     'user_email' => $this->userEmail,

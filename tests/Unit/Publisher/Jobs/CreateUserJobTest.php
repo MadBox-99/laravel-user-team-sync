@@ -106,3 +106,31 @@ it('throws exception on HTTP connection error', function (): void {
     expect(fn () => $job->handle(app(\Madbox99\UserTeamSync\Publisher\PublisherService::class)))
         ->toThrow(\Exception::class, 'Connection refused');
 });
+
+it('sends the uuid in the create-user payload', function (): void {
+    Illuminate\Support\Facades\Http::fake([
+        'https://crm.test/api/user-teams' => Illuminate\Support\Facades\Http::response(['teams' => []]),
+        'https://crm.test/api/create-user' => Illuminate\Support\Facades\Http::response(['user_id' => 1], 201),
+    ]);
+
+    config()->set('user-team-sync.publisher.app_source', 'config');
+    config()->set('user-team-sync.publisher.apps', [
+        'crm' => ['url' => 'https://crm.test', 'api_key' => 'k', 'active' => true],
+    ]);
+
+    $uuid = (string) Illuminate\Support\Str::uuid();
+
+    (new Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob(
+        email: 'new@example.com',
+        name: 'New',
+        passwordHash: Illuminate\Support\Facades\Hash::make('secret'),
+        role: 'subscriber',
+        ownerEmail: 'owner@example.com',
+        uuid: $uuid,
+    ))->handle(app(Madbox99\UserTeamSync\Publisher\PublisherService::class));
+
+    Illuminate\Support\Facades\Http::assertSent(
+        fn ($request): bool => $request->url() === 'https://crm.test/api/create-user'
+            && $request['uuid'] === $uuid
+    );
+});
