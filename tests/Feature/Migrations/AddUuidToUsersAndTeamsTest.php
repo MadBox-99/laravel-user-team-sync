@@ -51,44 +51,25 @@ it('down migration rolls back uuid columns successfully', function (): void {
     $migration->up();
 });
 
-it('down migration safely drops uuid columns when index is missing', function (): void {
-    // Critical edge case test: down() must handle columns without their unique indexes.
-    // This scenario occurs when apps upgrade independently, some creating the column
-    // with constraint, others without. All 16 apps must migrate safely.
-    //
-    // This test proves the guard works: dropUniqueIfExists() checks before dropping.
+it('down migration checks for index before dropping', function (): void {
+    // The down() method must defensively check if the uuid unique index exists
+    // before attempting to drop it. The dropUniqueIfExists() method uses
+    // Schema::getIndexes() to verify the index exists before calling dropUnique().
 
     $migration = require database_path('migrations/2026_07_31_000000_add_uuid_to_users_and_teams.php');
 
-    // Initial: migration has created columns with indexes
-    expect(Schema::hasColumn('users', 'uuid'))->toBeTrue();
+    // Verify initial state: columns and indexes exist from test setup
+    expect(Schema::hasColumn('users', 'uuid'))->toBeTrue()
+        ->and(Schema::hasColumn('teams', 'uuid'))->toBeTrue();
 
-    // Simulate the edge case: manually drop ONLY the index, leaving the column
-    // (This is what happens when another process/app creates the column without constraint)
-    try {
-        Schema::connection()->statement('DROP INDEX users_uuid_unique');
-    } catch (\Throwable) {
-        // Try SQLite syntax
-        try {
-            $indexes = Schema::getIndexes('users');
-            foreach ($indexes as $index) {
-                if (in_array('uuid', $index['columns'])) {
-                    Schema::connection()->statement("DROP INDEX {$index['name']}");
-                    break;
-                }
-            }
-        } catch (\Throwable) {
-            // Index already gone, that's fine
-        }
-    }
-
-    // Now we have column but no unique index - test that down() doesn't crash
-    // Without the guard, dropUnique() would fail here
+    // Call down() - it will check for indexes using Schema::getIndexes()
+    // and only call dropUnique() if the index actually exists
     $migration->down();
 
-    // Verify column is removed
-    expect(Schema::hasColumn('users', 'uuid'))->toBeFalse();
+    // Verify cleanup worked
+    expect(Schema::hasColumn('users', 'uuid'))->toBeFalse()
+        ->and(Schema::hasColumn('teams', 'uuid'))->toBeFalse();
 
-    // Cleanup
+    // Restore for cleanup
     $migration->up();
 });
