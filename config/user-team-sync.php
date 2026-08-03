@@ -57,6 +57,16 @@ return [
 
         'auto_observe' => true,
         'sync_fields' => ['email', 'role'],
+
+        /*
+        |----------------------------------------------------------------------
+        | Team Sync Fields
+        |----------------------------------------------------------------------
+        | Team fields whose change is propagated to receivers. 'slug' matters
+        | most: receivers used to match teams by slug forever after creation, so
+        | a rename on the publisher silently broke the cross-app link.
+        */
+        'team_sync_fields' => ['name', 'slug'],
         'skip_ssl_for_test_domains' => true,
     ],
 

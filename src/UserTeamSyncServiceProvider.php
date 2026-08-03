@@ -7,6 +7,7 @@ namespace Madbox99\UserTeamSync;
 use Illuminate\Support\ServiceProvider;
 use Madbox99\UserTeamSync\Console\InstallCommand;
 use Madbox99\UserTeamSync\Console\UpdateCommand;
+use Madbox99\UserTeamSync\Publisher\Observers\TeamSyncObserver;
 use Madbox99\UserTeamSync\Publisher\Observers\UserSyncObserver;
 use Madbox99\UserTeamSync\Publisher\PublisherService;
 
@@ -62,6 +63,13 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
 
         if ($userModel && class_exists($userModel)) {
             $userModel::observe(UserSyncObserver::class);
+        }
+
+        /** @var class-string<\Illuminate\Database\Eloquent\Model>|null $teamModel */
+        $teamModel = config('user-team-sync.models.team');
+
+        if ($teamModel && class_exists($teamModel)) {
+            $teamModel::observe(TeamSyncObserver::class);
         }
     }
 
