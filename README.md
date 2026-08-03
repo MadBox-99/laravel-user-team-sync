@@ -179,8 +179,29 @@ All endpoints are protected by Bearer token authentication.
 | POST | `/api/sync-user` | Update user fields |
 | POST | `/api/toggle-user-active` | Set active/inactive status |
 | POST | `/api/create-team` | Create a team |
+| POST | `/api/update-team` | Apply a team rename (see below) |
 | GET | `/api/user-teams` | Get user's teams |
 | POST | `/api/sync-password` | Sync password hash |
+| GET | `/api/identity-audit` | Diff users/teams/memberships against the publisher |
+| POST | `/api/identity-uuids` | Bulk-apply the publisher's uuid mapping |
+
+### Team renames
+
+Receivers used to match teams by slug forever after creation, so renaming a team
+on the publisher silently and permanently broke the cross-app link. `TeamSyncObserver`
+now propagates changes to the fields in `publisher.team_sync_fields` (default
+`name`, `slug`) via `UpdateTeamJob`.
+
+`/api/update-team` identifies the team by `uuid`. It falls back to `original_slug`
+— the team's *pre-rename* slug, which is what the receiver still knows it by —
+only when the local team has no uuid of its own, and then adopts the publisher's
+uuid so the next rename skips the fallback. A local uuid that differs from the
+incoming one means the two sides disagree about which team this is; that returns
+`409` rather than renaming the wrong team.
+
+A `404` is normal, not an error: the publisher fans out to every active app
+regardless of entitlement, so most apps do not know most teams. Those are logged
+with status `skipped`.
 
 ## Events
 
@@ -193,7 +214,10 @@ Listen to these events for custom logic:
 | `PasswordSynced` | Password synced to receiver |
 | `UserActiveToggled` | Active status changed |
 | `TeamCreatedFromSync` | Team created on receiver |
-| `SyncFailed` | Any sync operation failed |
+| `TeamUpdatedFromSync` | Team renamed on receiver |
+| `TeamSynced` | A receiver accepted a team change |
+| `TeamSyncFailed` | A receiver rejected a team change (a 404 does not count) |
+| `SyncFailed` | Any user sync operation failed |
 
 ```php
 // In EventServiceProvider or listener

@@ -13,6 +13,7 @@ use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncPasswordJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\ToggleUserActiveJob;
+use Madbox99\UserTeamSync\Publisher\Jobs\UpdateTeamJob;
 
 final class PublisherService
 {
@@ -107,6 +108,14 @@ final class PublisherService
     public function createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null, ?string $uuid = null): void
     {
         $this->dispatchJob(new CreateTeamJob($teamName, $userEmail, $slug, $userName, $uuid));
+    }
+
+    /**
+     * @param  array<string, mixed>  $changedData
+     */
+    public function updateTeam(?string $uuid, string $originalSlug, array $changedData): void
+    {
+        $this->dispatchJob(new UpdateTeamJob($uuid, $originalSlug, $changedData));
     }
 
     public function toggleUserActive(string $userEmail, bool $isActive, string $appKey): void
