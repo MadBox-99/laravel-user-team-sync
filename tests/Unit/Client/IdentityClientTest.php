@@ -23,6 +23,13 @@ it('builds an authorize url with pkce and the configured client', function (): v
         'code_challenge' => 'challenge-xyz',
         'code_challenge_method' => 'S256',
     ]);
+
+    // The authorize URL is a confidential OAuth client's URL sitting in
+    // browser history, server access logs and Referer headers. The client
+    // secret and the PKCE verifier must never end up in it.
+    expect($query)
+        ->not->toHaveKey('client_secret')
+        ->not->toHaveKey('code_verifier');
 });
 
 it('exchanges an authorization code for tokens', function (): void {
