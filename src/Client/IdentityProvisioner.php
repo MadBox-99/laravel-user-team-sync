@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync\Client;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Madbox99\UserTeamSync\Client\Exceptions\IdentityConflictException;
 
@@ -105,9 +106,31 @@ final class IdentityProvisioner
             $user->forceFill(['password' => '']);
         }
 
-        $user->save();
+        try {
+            $user->save();
+        } catch (QueryException $exception) {
+            if (! $this->isIntegrityViolation($exception)) {
+                throw $exception;
+            }
+
+            // The likelier collision than the uuid clash above: the identity
+            // provider moved this e-mail onto another account, and a local row
+            // still holds it, so the UPDATE hits the unique index. Same
+            // conflict, spotted by the database instead of by us — both the
+            // callback and the middleware already know how to handle it.
+            throw IdentityConflictException::emailBelongsToAnotherIdentity($email, $exception);
+        }
 
         return $user;
+    }
+
+    /**
+     * SQLSTATE class 23 is "integrity constraint violation" on every driver
+     * this package supports, so the check needs no driver-specific error code.
+     */
+    private function isIntegrityViolation(QueryException $exception): bool
+    {
+        return str_starts_with((string) $exception->getCode(), '23');
     }
 
     private function applyRole(Model $user, string $claimRole): void

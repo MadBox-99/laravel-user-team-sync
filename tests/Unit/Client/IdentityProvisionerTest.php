@@ -90,6 +90,29 @@ it('refuses to take over an e-mail that belongs to a different uuid', function (
         ->toThrow(IdentityConflictException::class);
 });
 
+it('turns a unique-index e-mail collision into a conflict instead of a 500', function (): void {
+    // The likelier collision in production: the hub moves an e-mail onto this
+    // identity while a *different* local row still holds it. The uuid check
+    // never sees it — the user is found by uuid — so it surfaces as a raw
+    // QueryException from the UPDATE unless it is converted here.
+    User::query()->create([
+        'uuid' => '11111111-1111-4111-8111-111111111111',
+        'name' => 'Anna Teszt',
+        'email' => 'anna@example.test',
+        'password' => '',
+    ]);
+
+    User::query()->create([
+        'uuid' => '99999999-9999-4999-8999-999999999999',
+        'name' => 'Bela Teszt',
+        'email' => 'bela@example.test',
+        'password' => '',
+    ]);
+
+    expect(fn () => app(IdentityProvisioner::class)->provision(claims(['email' => 'bela@example.test'])))
+        ->toThrow(IdentityConflictException::class);
+});
+
 it('writes the uuid even when the receiver model does not list it as fillable', function (): void {
     // App\Models\User in crm declares #[Fillable] without 'uuid'. Mass
     // assignment would silently drop it and every login would create a new row.

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync\Client\Exceptions;
 
 use RuntimeException;
+use Throwable;
 
 /**
  * The claims describe an identity that cannot be reconciled with what is
@@ -15,10 +16,11 @@ use RuntimeException;
  */
 final class IdentityConflictException extends RuntimeException
 {
-    public static function emailBelongsToAnotherIdentity(string $email): self
+    public static function emailBelongsToAnotherIdentity(string $email, ?Throwable $previous = null): self
     {
         return new self(
             "The e-mail address [{$email}] already belongs to a local user with a different identity.",
+            previous: $previous,
         );
     }
 }
