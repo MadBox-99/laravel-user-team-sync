@@ -92,6 +92,9 @@ abstract class TestCase extends Orchestra
             $table->string('role')->nullable();
             $table->boolean('is_active')->default(false);
             $table->timestamp('email_verified_at')->nullable();
+            // Every real host app's default migration has this; client mode's
+            // callback calls Auth::login(..., remember: true), which needs it.
+            $table->rememberToken();
             $table->timestamps();
         });
 
