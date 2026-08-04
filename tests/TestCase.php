@@ -69,6 +69,7 @@ abstract class TestCase extends Orchestra
         $app['config']->set('user-team-sync.client.client_secret', 'test-client-secret');
         $app['config']->set('user-team-sync.client.redirect_uri', 'https://app.test/auth/callback');
         $app['config']->set('user-team-sync.client.subscribe_url', 'https://identity.test');
+        $app['config']->set('user-team-sync.client.login_url', 'https://app.test/login');
         $app['config']->set('user-team-sync.client.allowlist', []);
         $app['config']->set('user-team-sync.client.legacy_receiver', true);
         $app['config']->set('user-team-sync.client.role_map', []);
