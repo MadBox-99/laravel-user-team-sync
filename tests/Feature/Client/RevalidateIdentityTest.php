@@ -250,6 +250,16 @@ it('refreshes an expired access token instead of logging the user out', function
         ->assertOk();
 
     expect(Auth::check())->toBeTrue();
+
+    // Passport rotates the refresh token and revokes the old one the moment it
+    // is used. If the rotated pair is not written back to the session, the very
+    // next stale window presents a dead refresh token and logs the user out —
+    // and a test that only asserts assertOk() would never notice.
+    expect(decrypt(session(IdentitySession::ACCESS_TOKEN)))->toBe('access-2')
+        ->and(decrypt(session(IdentitySession::REFRESH_TOKEN)))->toBe('refresh-2');
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://identity.test/api/userinfo'
+        && $request->hasHeader('Authorization', 'Bearer access-2'));
 });
 
 it('clears the grace marker after a successful revalidation', function (): void {
