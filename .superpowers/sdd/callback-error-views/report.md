@@ -150,3 +150,116 @@ neither needed modification, since `refused()` still returns 403.
 - `tests/TestCase.php`
 - `tests/Feature/Client/AuthFlowTest.php`
 - `README.md`
+
+---
+
+# Fix report — review follow-up
+
+## 1. Important: vacuous 503/401 leak tests
+
+The reviewer showed that `assertDontSee('test-client-secret')` on both the 503 and
+401 tests measured nothing: that string was never reachable through
+`IdentityUnavailableException`/`IdentityRejectedException` in the first place, so
+leaking the real exception message into the view left the test green.
+
+Fix: both assertions now check for the exact prefix `IdentityClient` produces for
+the fixture each test already sets up:
+- 503 test (`Http::fake` returns 500 from the token endpoint, hitting
+  `serverError()` in `IdentityClient::send()`): asserts the body does not contain
+  `'The identity provider answered with HTTP'`.
+- 401 test (`Http::fake` returns 400, hitting `clientError()`): asserts the body
+  does not contain `'The identity provider rejected the request with HTTP'`.
+
+This is the fifth instance of this pattern per the coordinator's note, so the fix
+targets the actual string the production code would emit under the mutation,
+not a plausible-looking but unreachable one.
+
+### Mutation proof — 503 page
+
+Reapplied the reviewer's exact mutation: `catch (IdentityUnavailableException
+$mutationException)` now called `unavailable($mutationException->getMessage())`,
+and `unavailable()`/the view were changed to accept and print
+`mutationDebugMessage`.
+
+```
+vendor/bin/pest --filter="shows a 503 retry page"
+FAILED  ... > it shows a 503 retry page when the identity provider is unreachable...
+Not to contain: The identity provider answered with HTTP
+Tests: 1 failed (3 assertions)
+```
+
+Reverted the controller and view; re-ran the same filter — passes again, and the
+full suite is green (see below).
+
+### Mutation proof — 401 page
+
+Same treatment for `IdentityRejectedException`/`rejected()`:
+
+```
+vendor/bin/pest --filter="shows a 401 page"
+FAILED  ... > it shows a 401 page when the identity provider rejects the code...
+Not to contain: The identity provider rejected the request with HTTP
+Tests: 1 failed (3 assertions)
+```
+
+Reverted; full suite green afterward.
+
+## 2. Important: timing side channel — documented, not fixed
+
+Per instruction, the timing gap between the two `refused()` callers is **not**
+equalised. What changed is the claim itself, in two places:
+
+- `IdentityCallbackController`: the comment at the state-mismatch check and the
+  docblock on `refused()` now state plainly that the *response* (status, body,
+  headers) is identical, but the two call sites do a different amount of work
+  before reaching it — state mismatch returns immediately, not-allowlisted only
+  after `exchangeCode()` + `fetchClaims()` — so a network-level observer can
+  distinguish them by latency. The docblock also records the accepted-risk
+  reasoning: exploiting this needs the attacker's own valid `state`/`code` pair,
+  i.e. their own handshake, which does not obviously generalise into enumerating
+  *other* people's e-mail addresses against the allowlist, and names what would
+  make that stop being true (replayable codes, or reaching the not-allowlisted
+  branch without a real handshake).
+- `README.md`: the "Callback failure pages" section's claim that the two 403
+  causes are indistinguishable was narrowed to "at the response level"
+  (previously implied indistinguishable, full stop), and a new paragraph states
+  the timing asymmetry, why it's accepted, and what would require revisiting it.
+
+No code path changed for this item — only comments and documentation, as
+instructed.
+
+## 3. Minor: `WWW-Authenticate` on 401
+
+Added a `WWW-Authenticate: Bearer realm="<client.identity_url>"` header to the
+`rejected()` response (`->header('WWW-Authenticate', 'Bearer realm="..."')`),
+satisfying RFC 7235's requirement that a 401 carry a challenge. Chose to add the
+header rather than switch to 403: the page is interactive HTML consumed by a
+browser, not an API response any client parses or retries against, so the header
+is inert for every real caller — there is no browser/proxy behavior it could
+trigger (no popup, no automatic retry) — while 401 remains the more accurate code
+for "the provider explicitly refused this authentication attempt." Verified with
+a new assertion, `assertHeader('WWW-Authenticate', 'Bearer realm="https://identity.test"')`,
+using the test fixture's `client.identity_url`.
+
+## Re-run after all three fixes
+
+```
+vendor/bin/pest
+Tests:    236 passed (557 assertions)
+Duration: 6.69s
+
+vendor/bin/pint
+{"result":"pass"}
+```
+
+Same 236-test count as before (fixes were assertion/documentation changes to
+existing tests plus one new header assertion within an existing test, not new
+test cases), with 557 assertions (up from 555: the added prefix checks plus the
+`WWW-Authenticate` header assertion, net of the two vacuous `assertDontSee`
+calls they replaced).
+
+## Files touched (this follow-up)
+
+- `src/Client/Http/Controllers/IdentityCallbackController.php`
+- `tests/Feature/Client/AuthFlowTest.php`
+- `README.md`

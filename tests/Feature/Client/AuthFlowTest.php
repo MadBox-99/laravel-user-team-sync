@@ -250,7 +250,11 @@ it('shows a 503 retry page when the identity provider is unreachable, with no se
 
     $response->assertStatus(503);
     $response->assertSee('Sign-in is temporarily unavailable');
-    $response->assertDontSee('test-client-secret');
+    // The genuine text IdentityClient puts on IdentityUnavailableException
+    // for this exact fixture (a 500 from the token endpoint) — not a string
+    // that was never reachable in the first place. If the controller ever
+    // starts passing $exception->getMessage() into the view, this fails.
+    $response->assertDontSee('The identity provider answered with HTTP');
 
     expect(auth()->check())->toBeFalse()
         // The handshake is single-use regardless of the outcome, so an outage
@@ -273,7 +277,13 @@ it('shows a 401 page when the identity provider rejects the code, with no secret
 
     $response->assertStatus(401);
     $response->assertSee('Sign-in could not be completed');
-    $response->assertDontSee('test-client-secret');
+    // The genuine text IdentityClient puts on IdentityRejectedException for
+    // this exact fixture (a 400 from the token endpoint) — not a string
+    // that was never reachable in the first place. If the controller ever
+    // starts passing $exception->getMessage() into the view, this fails.
+    $response->assertDontSee('The identity provider rejected the request with HTTP');
+    // RFC 7235 requires a challenge on every 401 response.
+    $response->assertHeader('WWW-Authenticate', 'Bearer realm="https://identity.test"');
 
     expect(auth()->check())->toBeFalse();
 });

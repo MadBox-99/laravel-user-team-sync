@@ -28,9 +28,14 @@ final class IdentityCallbackController
         $verifier = Session::get(IdentitySession::CODE_VERIFIER);
 
         // A callback that does not match a handshake this session started is
-        // either a forged login or a stale tab. Both get the same answer as
-        // "not on the allowlist" below — see refused() — so an attacker can
-        // never tell the two apart from the response alone.
+        // either a forged login or a stale tab. Both get the byte-identical
+        // response as "not on the allowlist" below — see refused() — status,
+        // body and headers cannot be told apart. The two paths are NOT
+        // equal-time, though: this branch returns immediately, while the
+        // not-allowlisted branch only reaches refused() after two real
+        // outbound calls to the identity provider (exchangeCode +
+        // fetchClaims), which is a measurable latency gap. That gap is
+        // accepted rather than closed — see refused() for why.
         if (! is_string($expectedState) || ! is_string($verifier)
             || ! hash_equals($expectedState, (string) $request->string('state'))
         ) {
@@ -144,8 +149,19 @@ final class IdentityCallbackController
     /**
      * A forged/stale state and an account not (yet) on the allowlist share
      * this exact response — status, body and headers — on purpose. Telling
-     * them apart would hand an attacker a way to probe which e-mail
-     * addresses are allowlisted by watching how a callback is refused.
+     * them apart at that level would hand an attacker a way to probe which
+     * e-mail addresses are allowlisted by watching how a callback is refused.
+     *
+     * This is NOT a timing-equalised response: the two callers reach this
+     * method after a different amount of work (see the comment at the state
+     * check above), so a network-level observer can in principle tell a
+     * fast refusal from a slow one. That gap is accepted rather than closed,
+     * because exploiting it requires the attacker's own valid state/code
+     * pair from a handshake they initiated — i.e. their own login attempt —
+     * which does not obviously extend into a way to enumerate *other*
+     * people's e-mail addresses against the allowlist. If that changes (for
+     * instance if `client_id`/`client_secret` were ever attacker-controlled,
+     * or codes became replayable), this trade needs revisiting.
      */
     private function refused(): Response
     {
@@ -175,9 +191,17 @@ final class IdentityCallbackController
      */
     private function rejected(): Response
     {
+        // RFC 7235 requires a WWW-Authenticate challenge on every 401. This
+        // page is interactive HTML, not an API response a client retries
+        // with credentials, so the header changes nothing for the browser —
+        // but a Bearer challenge naming the identity provider is the
+        // conformant, honest thing to send.
         return response()->view('user-team-sync::identity.rejected', [
             'loginUrl' => (string) config('user-team-sync.client.login_url'),
-        ], 401);
+        ], 401)->header(
+            'WWW-Authenticate',
+            'Bearer realm="'.(string) config('user-team-sync.client.identity_url').'"',
+        );
     }
 
     /**
