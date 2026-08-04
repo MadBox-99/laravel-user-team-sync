@@ -38,7 +38,7 @@ final class RevalidateIdentity
         // expired SSO session would log every non-pilot user out. It also
         // covers Auth::login(..., remember: true): the recaller re-authenticates
         // into a brand new session, which must not be bounced on sight.
-        if (! Auth::check() || ! IdentitySession::exists() || $this->isFresh()) {
+        if (! Auth::check() || ! IdentitySession::exists() || $this->isFresh() || $this->isRetryPending()) {
             return $next($request);
         }
 
@@ -127,6 +127,25 @@ final class RevalidateIdentity
         return $checkedAt->greaterThan(Carbon::now()->subMinutes($minutes));
     }
 
+    /**
+     * A provider that hangs is worse than one that refuses: without this, every
+     * single request of every user would sit through the full HTTP timeout for
+     * the whole grace window, each one holding a worker and the session lock.
+     * Retries get their own, much shorter clock instead.
+     */
+    private function isRetryPending(): bool
+    {
+        $retriedAt = IdentitySession::retriedAt();
+
+        if ($retriedAt === null) {
+            return false;
+        }
+
+        $minutes = (int) config('user-team-sync.client.retry_after_minutes', 5);
+
+        return $retriedAt->greaterThan(Carbon::now()->subMinutes($minutes));
+    }
+
     private function tolerateOutage(Request $request, Closure $next, Throwable $exception): Response
     {
         IdentitySession::startGrace();
@@ -142,7 +161,12 @@ final class RevalidateIdentity
             return $this->logout($request);
         }
 
-        // The session carries on and the next request tries again.
+        // Note the *retry*, never the grace start: startGrace() above keeps the
+        // 24-hour window anchored to the first failure, so a long outage still
+        // expires instead of resetting its own clock on every attempt.
+        IdentitySession::markRetried();
+
+        // The session carries on and a later request tries again.
         return $next($request);
     }
 

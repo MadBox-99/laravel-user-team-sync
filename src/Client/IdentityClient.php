@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync\Client;
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Madbox99\UserTeamSync\Client\Exceptions\IdentityRejectedException;
@@ -60,7 +61,7 @@ final class IdentityClient
      */
     public function fetchClaims(string $accessToken): array
     {
-        $response = $this->send(fn (): Response => Http::timeout($this->timeout())
+        $response = $this->send(fn (): Response => $this->pending()
             ->withToken($accessToken)
             ->acceptJson()
             ->get($this->baseUrl().'/api/userinfo'));
@@ -134,7 +135,7 @@ final class IdentityClient
      */
     private function token(array $payload): array
     {
-        $response = $this->send(fn (): Response => Http::timeout($this->timeout())
+        $response = $this->send(fn (): Response => $this->pending()
             ->asForm()
             ->acceptJson()
             ->post($this->baseUrl().'/oauth/token', array_merge($payload, [
@@ -184,8 +185,15 @@ final class IdentityClient
         return rtrim((string) config('user-team-sync.client.identity_url'), '/');
     }
 
-    private function timeout(): int
+    /**
+     * The connect timeout matters more than the read timeout here: this client
+     * runs inside a middleware on every authenticated page, so a provider whose
+     * TCP connect hangs would otherwise pin a worker for the full read timeout
+     * on request after request.
+     */
+    private function pending(): PendingRequest
     {
-        return (int) config('user-team-sync.client.http_timeout', 10);
+        return Http::timeout((int) config('user-team-sync.client.http_timeout', 10))
+            ->connectTimeout((int) config('user-team-sync.client.http_connect_timeout', 3));
     }
 }

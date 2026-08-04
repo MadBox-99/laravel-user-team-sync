@@ -194,6 +194,28 @@ it('accepts claims that carry no orgs and no apps at all', function (): void {
         ->toHaveKey('sub');
 });
 
+it('bounds the connect time as well as the read time', function (): void {
+    // Without a connect timeout a provider that accepts nothing would hold the
+    // request for the full read timeout — inside a middleware that runs on
+    // every authenticated page of every module app.
+    $options = [];
+
+    Http::fake(function ($request, array $requestOptions) use (&$options) {
+        $options = $requestOptions;
+
+        return Http::response([
+            'sub' => '11111111-1111-4111-8111-111111111111',
+            'email' => 'anna@example.test',
+            'name' => 'Anna Teszt',
+        ]);
+    });
+
+    app(IdentityClient::class)->fetchClaims('access-1');
+
+    expect($options['connect_timeout'])->toBe(3)
+        ->and($options['timeout'])->toBe(10);
+});
+
 it('refreshes an expired access token', function (): void {
     Http::fake([
         'identity.test/oauth/token' => Http::response([

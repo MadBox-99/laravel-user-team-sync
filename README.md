@@ -141,6 +141,7 @@ IDENTITY_REDIRECT_URI=https://this-app.example/auth/callback
 
 IDENTITY_REVALIDATE_MINUTES=15
 IDENTITY_GRACE_HOURS=24
+IDENTITY_RETRY_MINUTES=5
 ```
 
 ```php
@@ -157,11 +158,21 @@ IDENTITY_GRACE_HOURS=24
     'scopes' => '',
     'http_timeout' => env('IDENTITY_HTTP_TIMEOUT', 10),
 
+    // Kept short: the revalidation middleware runs on every authenticated
+    // page, so a hanging connect would otherwise pin a worker and the
+    // session lock for the full read timeout, request after request.
+    'http_connect_timeout' => env('IDENTITY_HTTP_CONNECT_TIMEOUT', 3),
+
     // Re-fetch the claims once the session's last check is older than this.
     'revalidate_after_minutes' => env('IDENTITY_REVALIDATE_MINUTES', 15),
 
     // How long a session survives while the identity provider is unreachable.
     'grace_hours' => env('IDENTITY_GRACE_HOURS', 24),
+
+    // How long to wait before retrying an unreachable provider. Without it
+    // every request would retry, so a slow provider would cost every page
+    // load the full HTTP timeout for the whole grace window.
+    'retry_after_minutes' => env('IDENTITY_RETRY_MINUTES', 5),
 
     // Comma-separated e-mails. Non-empty during a phased rollout: only these
     // users go through SSO, everyone else keeps using the legacy login and
@@ -216,10 +227,20 @@ On every request past a fresh `CHECKED_AT` (older than `revalidate_after_minutes
    lands locally within one `revalidate_after_minutes` window.
 3. Logs the user out if this app's `app_key` has disappeared from the token's `apps` claim — this is
    how a cancelled subscription takes effect fleet-wide with no push.
-4. Treats a `5xx`/unreachable provider as an **outage**, not as revoked access: the session survives
-   for up to `grace_hours`, retrying on each subsequent request, and only logs out once the grace
-   window is exhausted. Collapsing this distinction would turn a five-minute identity-provider outage
-   into a forced logout across every app in the fleet.
+4. Treats a `5xx`/unreachable provider — or a 2xx whose body is not a well-formed claims payload,
+   such as a maintenance page served mid-deploy — as an **outage**, not as revoked access: the
+   session survives for up to `grace_hours` and only logs out once the grace window is exhausted.
+   Collapsing this distinction would turn a five-minute identity-provider outage into a forced
+   logout across every app in the fleet.
+5. Retries a failing provider at most once per `retry_after_minutes` rather than on every request,
+   so a *slow* provider does not add its timeout to every page load for every user. The grace
+   window still runs from the **first** failure, so a long outage expires on schedule.
+6. Never lets an unexpected error escape: anything other than a deliberate rejection or an
+   unreconcilable conflict is logged and tolerated rather than 500-ing the page.
+
+> The middleware only touches sessions that were established through SSO. During a phased rollout
+> (see `allowlist`) the same app still signs other users in through the ordinary password form;
+> those sessions carry no identity token and are passed through untouched.
 
 ## Usage
 

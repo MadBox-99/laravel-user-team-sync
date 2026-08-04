@@ -27,6 +27,8 @@ final class IdentitySession
 
     public const string GRACE_STARTED_AT = 'identity.grace_started_at';
 
+    public const string RETRIED_AT = 'identity.grace_retried_at';
+
     public const string INTENDED = 'identity.intended';
 
     /**
@@ -96,9 +98,27 @@ final class IdentitySession
         return is_int($timestamp) ? Carbon::createFromTimestamp($timestamp) : null;
     }
 
+    /**
+     * When the last retry against an unreachable provider was made. Kept apart
+     * from GRACE_STARTED_AT on purpose: the grace window must keep running
+     * from the *first* failure, so a long outage still expires, while the
+     * retries in between are spaced by their own, much shorter clock.
+     */
+    public static function markRetried(): void
+    {
+        Session::put(self::RETRIED_AT, Carbon::now()->timestamp);
+    }
+
+    public static function retriedAt(): ?CarbonInterface
+    {
+        $timestamp = Session::get(self::RETRIED_AT);
+
+        return is_int($timestamp) ? Carbon::createFromTimestamp($timestamp) : null;
+    }
+
     public static function clearGrace(): void
     {
-        Session::forget(self::GRACE_STARTED_AT);
+        Session::forget([self::GRACE_STARTED_AT, self::RETRIED_AT]);
     }
 
     public static function forgetHandshake(): void
@@ -120,6 +140,7 @@ final class IdentitySession
             self::REFRESH_TOKEN,
             self::CHECKED_AT,
             self::GRACE_STARTED_AT,
+            self::RETRIED_AT,
         ]);
     }
 

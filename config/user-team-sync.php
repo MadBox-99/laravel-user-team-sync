@@ -127,6 +127,14 @@ return [
         'http_timeout' => env('IDENTITY_HTTP_TIMEOUT', 10),
 
         /*
+        | Kept short on purpose. The revalidation middleware runs on every
+        | authenticated page, so a provider whose TCP connect hangs would
+        | otherwise pin a PHP-FPM worker and the session lock for the full
+        | read timeout, on request after request.
+        */
+        'http_connect_timeout' => env('IDENTITY_HTTP_CONNECT_TIMEOUT', 3),
+
+        /*
         | Re-fetch the claims and re-run the provisioner when the session's
         | last check is older than this. This is what makes a team rename, a
         | new membership or a cancelled subscription reach the app without any
@@ -140,6 +148,15 @@ return [
         | already-working user keeps working, only new logins are blocked.
         */
         'grace_hours' => env('IDENTITY_GRACE_HOURS', 24),
+
+        /*
+        | How long to wait before trying the identity provider again while it
+        | is unreachable. Without this every single request would retry, so a
+        | hanging provider would add the full HTTP timeout to every page load
+        | of every user for the whole grace window. The grace window itself
+        | still runs from the first failure, so a long outage expires.
+        */
+        'retry_after_minutes' => env('IDENTITY_RETRY_MINUTES', 5),
 
         /*
         | Transitional, phase 3 only. Comma-separated e-mail addresses. When

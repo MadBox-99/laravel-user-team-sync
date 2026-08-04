@@ -193,6 +193,89 @@ it('tolerates an unexpected failure instead of 500-ing the page', function (): v
     expect(Auth::check())->toBeTrue();
 });
 
+it('records a retry marker without restarting the grace clock', function (): void {
+    // A slow provider is worse than a down one: with no retry marker every
+    // single request would sit through the full HTTP timeout, each one holding
+    // a PHP-FPM worker and the session lock, for up to 24 hours.
+    Http::fake(['identity.test/api/userinfo' => Http::response('down', 503)]);
+
+    $graceStartedAt = Carbon::now()->subHours(10)->timestamp;
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+            IdentitySession::GRACE_STARTED_AT => $graceStartedAt,
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    expect(session(IdentitySession::RETRIED_AT))->toBe(Carbon::now()->timestamp)
+        // The grace window is anchored to the first failure. A retry that
+        // pushed this forward would let an outage postpone its own expiry
+        // indefinitely.
+        ->and(session(IdentitySession::GRACE_STARTED_AT))->toBe($graceStartedAt);
+});
+
+it('does not call the provider again until the retry interval has passed', function (): void {
+    // The session state a previous request in grace would have left behind.
+    Http::fake();
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+            IdentitySession::GRACE_STARTED_AT => Carbon::now()->subHours(1)->timestamp,
+            IdentitySession::RETRIED_AT => Carbon::now()->subMinutes(2)->timestamp,
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    Http::assertNothingSent();
+
+    expect(Auth::check())->toBeTrue();
+});
+
+it('retries again once the retry interval has passed', function (): void {
+    Http::fake(['identity.test/api/userinfo' => Http::response(claimsResponse())]);
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+            IdentitySession::GRACE_STARTED_AT => Carbon::now()->subHours(1)->timestamp,
+            IdentitySession::RETRIED_AT => Carbon::now()->subMinutes(6)->timestamp,
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    Http::assertSentCount(1);
+
+    // A recovered provider clears both grace markers, so the session goes back
+    // to the ordinary revalidation cadence.
+    expect(session(IdentitySession::GRACE_STARTED_AT))->toBeNull()
+        ->and(session(IdentitySession::RETRIED_AT))->toBeNull();
+});
+
+it('still expires the grace window after a long outage of spaced retries', function (): void {
+    // The retry marker is recent-ish but past the interval; the grace marker is
+    // 25 hours old. The outage must expire on its own clock, not be kept alive
+    // by its retries.
+    Http::fake(['identity.test/api/userinfo' => Http::response('down', 503)]);
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+            IdentitySession::GRACE_STARTED_AT => Carbon::now()->subHours(25)->timestamp,
+            IdentitySession::RETRIED_AT => Carbon::now()->subMinutes(6)->timestamp,
+        ])
+        ->get('/protected')
+        ->assertRedirect();
+
+    expect(Auth::check())->toBeFalse();
+});
+
 it('logs the user out once the grace period has run out', function (): void {
     Http::fake(['identity.test/api/userinfo' => Http::response('down', 503)]);
 
