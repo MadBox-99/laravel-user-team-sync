@@ -78,6 +78,24 @@ it('adopts a local user that has no uuid but the same e-mail', function (): void
         ->and($user->uuid)->toBe('11111111-1111-4111-8111-111111111111');
 });
 
+it('adopts a local user whose uuid is an empty string rather than null', function (): void {
+    // A legacy import or a NOT NULL column defaulting to '' leaves rows that
+    // carry no identity at all. Treating '' as "belongs to someone else" would
+    // lock those users out of SSO for good.
+    $existing = User::query()->create([
+        'uuid' => '',
+        'name' => 'Regi Nev',
+        'email' => 'anna@example.test',
+        'password' => 'irrelevant',
+    ]);
+
+    $user = app(IdentityProvisioner::class)->provision(claims());
+
+    expect(User::query()->count())->toBe(1)
+        ->and($user->getKey())->toBe($existing->getKey())
+        ->and($user->uuid)->toBe('11111111-1111-4111-8111-111111111111');
+});
+
 it('refuses to take over an e-mail that belongs to a different uuid', function (): void {
     User::query()->create([
         'uuid' => '99999999-9999-4999-8999-999999999999',

@@ -78,8 +78,10 @@ final class IdentityProvisioner
             if ($byEmail instanceof Model) {
                 // Adopt a local account that predates the identity layer. A row
                 // that already carries a *different* uuid is a genuine identity
-                // clash and must not be taken over silently.
-                if ($byEmail->getAttribute('uuid') !== null) {
+                // clash and must not be taken over silently. An empty string is
+                // not an identity: legacy imports and NOT NULL columns with a
+                // '' default produce those, and they must be adopted like NULL.
+                if (trim((string) $byEmail->getAttribute('uuid')) !== '') {
                     throw IdentityConflictException::emailBelongsToAnotherIdentity($email);
                 }
 
