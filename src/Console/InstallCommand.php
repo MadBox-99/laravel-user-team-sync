@@ -149,7 +149,7 @@ final class InstallCommand extends Command
         }
 
         if ($additions !== []) {
-            $env = rtrim($env, "\n") . "\n\n" . implode("\n", $additions) . "\n";
+            $env = rtrim($env, "\n")."\n\n".implode("\n", $additions)."\n";
         }
 
         file_put_contents($envPath, $env);

@@ -26,6 +26,9 @@ class TeamWithoutUuidFillable extends Model
 
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class);
+        // Same explicit-pivot reasoning as UserWithoutUuidFillable::teams():
+        // the default alphabetical pivot table/keys would not resolve to the
+        // real 'team_user' table and its 'team_id'/'user_id' columns.
+        return $this->belongsToMany(User::class, 'team_user', 'team_id', 'user_id');
     }
 }

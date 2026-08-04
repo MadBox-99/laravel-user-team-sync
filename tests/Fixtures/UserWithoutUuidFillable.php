@@ -37,6 +37,11 @@ class UserWithoutUuidFillable extends Authenticatable
 
     public function teams(): BelongsToMany
     {
-        return $this->belongsToMany(Team::class);
+        // Explicit pivot table and keys: this model's class basename does not
+        // match its table name, so Eloquent's alphabetical defaults (pivot
+        // table "team_user_without_uuid_fillable", foreign key
+        // "user_without_uuid_fillable_id") would miss the real 'team_user'
+        // table and its 'user_id'/'team_id' columns from the package migration.
+        return $this->belongsToMany(Team::class, 'team_user', 'user_id', 'team_id');
     }
 }
