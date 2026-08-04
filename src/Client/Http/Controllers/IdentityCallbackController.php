@@ -62,7 +62,15 @@ final class IdentityCallbackController
 
         Session::regenerate();
 
-        Auth::login($user, remember: true);
+        // Deliberately no remember-me. A recaller cookie outlives the session
+        // and re-authenticates into a fresh one carrying no identity.* keys at
+        // all, which RevalidateIdentity would then wave straight through —
+        // permanently, for any user who idles past SESSION_LIFETIME. That
+        // would exempt them from entitlement revocation, role and team changes
+        // and the whole grace/logout machinery. Re-authenticating through the
+        // identity provider instead is transparent for a still-signed-in user:
+        // a first-party client skips the consent screen.
+        Auth::login($user);
 
         IdentitySession::putTokens($tokens);
         IdentitySession::markChecked();

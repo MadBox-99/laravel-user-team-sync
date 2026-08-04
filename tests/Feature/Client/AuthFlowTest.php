@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
 
@@ -61,6 +62,31 @@ it('signs the user in through the callback', function (): void {
     expect(auth()->check())->toBeTrue()
         ->and(auth()->user()->email)->toBe('anna@example.test')
         ->and(User::query()->count())->toBe(1);
+});
+
+it('mints no remember-me cookie, so a lapsed session cannot skip revalidation', function (): void {
+    // A recaller cookie outlives the session. It would re-authenticate the
+    // user into a fresh session holding no identity.* keys at all, which
+    // RevalidateIdentity passes through by design — permanently exempting
+    // anyone who idles past SESSION_LIFETIME from entitlement revocation,
+    // role and team changes and the grace/logout machinery.
+    fakeIdentity();
+
+    $this->get('/auth/redirect');
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertRedirect()
+        ->assertCookieMissing(Auth::guard('web')->getRecallerName());
+
+    // No remember token on the row either, so no recaller can be forged for
+    // this user after the fact.
+    expect(auth()->check())->toBeTrue()
+        ->and(auth()->viaRemember())->toBeFalse()
+        ->and(User::query()->sole()->getAttribute('remember_token'))->toBeNull();
 });
 
 it('rejects a callback whose state does not match', function (): void {

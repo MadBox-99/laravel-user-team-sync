@@ -5,7 +5,9 @@ declare(strict_types=1);
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 use Madbox99\UserTeamSync\Client\Http\Middleware\RevalidateIdentity;
 use Madbox99\UserTeamSync\Client\IdentitySession;
 use Madbox99\UserTeamSync\Tests\Fixtures\Team;
@@ -87,6 +89,50 @@ it('logs out an sso session whose access token is gone', function (): void {
         ->assertRedirect();
 
     expect(Auth::check())->toBeFalse();
+});
+
+it('is walked past by a legacy remember-me login, which is the control for the test below', function (): void {
+    // Proves the recaller mechanics used by the next test really do
+    // authenticate somebody. A legacy password login with "remember me" is
+    // allowed to come back into a fresh session without SSO: it never was an
+    // SSO session, so it is out of this middleware's scope.
+    Http::fake();
+
+    $this->user->forceFill(['remember_token' => Str::random(60)])->save();
+
+    $this->withCookie($recallerName = Auth::guard('web')->getRecallerName(), implode('|', [
+        $this->user->getAuthIdentifier(),
+        $this->user->getRememberToken(),
+        $this->user->getAuthPassword(),
+    ]))->get('/protected')->assertOk();
+
+    expect(Auth::check())->toBeTrue()
+        ->and(Auth::viaRemember())->toBeTrue()
+        ->and($recallerName)->toStartWith('remember_');
+
+    Http::assertNothingSent();
+});
+
+it('cannot be walked past by a recaller cookie for an sso user', function (): void {
+    // The regression: an SSO login used to mint a recaller cookie, so once the
+    // session lapsed the user came back authenticated into a fresh session
+    // with no identity.* keys — and this middleware, correctly, does not touch
+    // such a session. The hole is closed at the source: the callback writes no
+    // remember token, so a replayed recaller authenticates nobody at all.
+    Http::fake();
+
+    expect($this->user->getAttribute('remember_token'))->toBeNull();
+
+    $this->withCookie(Auth::guard('web')->getRecallerName(), implode('|', [
+        $this->user->getAuthIdentifier(),
+        Str::random(60),
+        $this->user->getAuthPassword(),
+    ]))->get('/protected')->assertOk();
+
+    expect(Auth::check())->toBeFalse()
+        ->and(Auth::viaRemember())->toBeFalse();
+
+    Http::assertNothingSent();
 });
 
 it('re-runs the provisioner once the check is stale', function (): void {
@@ -274,6 +320,38 @@ it('still expires the grace window after a long outage of spaced retries', funct
         ->assertRedirect();
 
     expect(Auth::check())->toBeFalse();
+});
+
+it('keeps personal data out of the log when it tolerates an unexpected failure', function (): void {
+    // A QueryException interpolates its bindings into getMessage(), so logging
+    // the raw message would spray e-mail addresses and names into the error
+    // log of every module app.
+    Http::fake(['identity.test/api/userinfo' => Http::response(claimsResponse())]);
+
+    Log::spy();
+
+    Team::saving(function (): void {
+        throw new RuntimeException(
+            'insert into "users" ("email", "name") values (anna@example.test, Anna Teszt)',
+        );
+    });
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    Log::shouldHaveReceived('error')->withArgs(function (string $message, array $context): bool {
+        $serialised = (string) json_encode($context);
+
+        return str_contains($context['exception'] ?? '', 'RuntimeException')
+            && ! str_contains($serialised, 'anna@example.test')
+            && ! str_contains($serialised, 'Anna Teszt')
+            && ! str_contains($serialised, 'access-1');
+    })->once();
 });
 
 it('logs the user out once the grace period has run out', function (): void {

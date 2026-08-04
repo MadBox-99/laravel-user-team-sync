@@ -242,6 +242,30 @@ On every request past a fresh `CHECKED_AT` (older than `revalidate_after_minutes
 > (see `allowlist`) the same app still signs other users in through the ordinary password form;
 > those sessions carry no identity token and are passed through untouched.
 
+> **SSO logins deliberately mint no "remember me" cookie.** A recaller cookie outlives the session
+> and would re-authenticate the user into a fresh session holding no identity state, which the
+> middleware passes through by design — permanently exempting anyone who idles past
+> `SESSION_LIFETIME` from revalidation. After the session lapses the user is sent back through the
+> identity provider instead, which for an already-signed-in user is a transparent round trip.
+
+#### Operational note: malformed claims count as an outage
+
+A 2xx response whose body is not a well-formed claims payload is treated exactly like an
+unreachable provider, **not** like a bad request. That covers a maintenance or proxy error page
+served with HTTP 200, but also a genuine data-quality fault on the provider side: an `orgs` entry
+with an empty `slug` or `name`, or a user with an empty `name`.
+
+What that looks like in practice: affected sessions keep working for `grace_hours` and then log out
+silently, instead of the page erroring loudly. The trade is deliberate — a fleet-wide 500 on every
+page of every module app is the worse failure — but it means a provider-side data fault is
+**quiet**, so watch the logs rather than waiting for user reports:
+
+- `user-team-sync: grace period expired while the identity provider was unreachable` — sessions are
+  now being logged out; the `reason` field carries the provider-side symptom.
+- `user-team-sync: unexpected failure during identity revalidation` — a bug rather than an outage;
+  logged with the exception class and throw site only. Claims, tokens and exception messages are
+  never logged, because a `QueryException` interpolates its bindings and would leak personal data.
+
 ## Usage
 
 ### Automatic Sync (Observer)

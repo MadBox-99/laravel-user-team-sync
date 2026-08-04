@@ -35,9 +35,11 @@ final class RevalidateIdentity
         // IdentitySession::exists() is the rollout guard: while the pilot runs,
         // the same app still signs users in through the legacy password form,
         // and such a session has no tokens to revalidate. Treating it as an
-        // expired SSO session would log every non-pilot user out. It also
-        // covers Auth::login(..., remember: true): the recaller re-authenticates
-        // into a brand new session, which must not be bounced on sight.
+        // expired SSO session would log every non-pilot user out — including a
+        // legacy remember-me login, whose recaller re-authenticates into a
+        // brand new session. SSO logins mint no recaller of their own (see
+        // IdentityCallbackController), precisely so this pass-through can
+        // never become a way around revalidation.
         if (! Auth::check() || ! IdentitySession::exists() || $this->isFresh() || $this->isRetryPending()) {
             return $next($request);
         }
@@ -70,9 +72,13 @@ final class RevalidateIdentity
         } catch (IdentityUnavailableException $exception) {
             return $this->tolerateOutage($request, $next, $exception);
         } catch (Throwable $exception) {
+            // Never the raw message: a QueryException interpolates its bindings,
+            // so e-mail addresses and names would land in the error log. The
+            // class and the throw site are enough to find the code; tokens and
+            // the claims payload are never logged at all.
             Log::error('user-team-sync: unexpected failure during identity revalidation.', [
                 'exception' => $exception::class,
-                'message' => $exception->getMessage(),
+                'at' => $exception->getFile().':'.$exception->getLine(),
             ]);
 
             return $this->tolerateOutage($request, $next, $exception);
@@ -155,7 +161,11 @@ final class RevalidateIdentity
 
         if ($graceStartedAt !== null && $graceStartedAt->lessThan(Carbon::now()->subHours($hours))) {
             Log::warning('user-team-sync: grace period expired while the identity provider was unreachable.', [
-                'message' => $exception->getMessage(),
+                // Only this package's own exception messages are safe to log
+                // verbatim; anything else may carry query bindings.
+                'reason' => $exception instanceof IdentityUnavailableException
+                    ? $exception->getMessage()
+                    : $exception::class,
             ]);
 
             return $this->logout($request);
