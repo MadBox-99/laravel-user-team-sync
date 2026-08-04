@@ -236,6 +236,109 @@ it('redirects to a legitimate relative intended path', function (): void {
     $response->assertRedirect('/app/acme-kft/customers');
 });
 
+it('shows a 503 retry page when the identity provider is unreachable, with no secret in the body', function (): void {
+    Http::fake([
+        'identity.test/oauth/token' => Http::response(['error' => 'server_error'], 500),
+    ]);
+
+    $this->get('/auth/redirect');
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertStatus(503);
+    $response->assertSee('Sign-in is temporarily unavailable');
+    // The genuine text IdentityClient puts on IdentityUnavailableException
+    // for this exact fixture (a 500 from the token endpoint) — not a string
+    // that was never reachable in the first place. If the controller ever
+    // starts passing $exception->getMessage() into the view, this fails.
+    $response->assertDontSee('The identity provider answered with HTTP');
+
+    expect(auth()->check())->toBeFalse()
+        // The handshake is single-use regardless of the outcome, so an outage
+        // must not leave it behind for a stale retry to reuse.
+        ->and(session('identity.state'))->toBeNull()
+        ->and(session('identity.code_verifier'))->toBeNull();
+});
+
+it('shows a 401 page when the identity provider rejects the code, with no secret in the body', function (): void {
+    Http::fake([
+        'identity.test/oauth/token' => Http::response(['error' => 'invalid_grant'], 400),
+    ]);
+
+    $this->get('/auth/redirect');
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertStatus(401);
+    $response->assertSee('Sign-in could not be completed');
+    // The genuine text IdentityClient puts on IdentityRejectedException for
+    // this exact fixture (a 400 from the token endpoint) — not a string
+    // that was never reachable in the first place. If the controller ever
+    // starts passing $exception->getMessage() into the view, this fails.
+    $response->assertDontSee('The identity provider rejected the request with HTTP');
+    // RFC 7235 requires a challenge on every 401 response.
+    $response->assertHeader('WWW-Authenticate', 'Bearer realm="https://identity.test"');
+
+    expect(auth()->check())->toBeFalse();
+});
+
+it('shows a 409 conflict page that never prints the colliding e-mail address', function (): void {
+    // A local account already owns this e-mail under a different identity —
+    // exactly the situation IdentityProvisioner refuses to silently resolve.
+    User::query()->create([
+        'uuid' => '99999999-9999-4999-8999-999999999999',
+        'name' => 'Someone Else',
+        'email' => 'anna@example.test',
+        'password' => 'irrelevant',
+    ]);
+
+    fakeIdentity();
+
+    $this->get('/auth/redirect');
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertStatus(409);
+    $response->assertSee('We could not sign you in');
+    $response->assertDontSee('anna@example.test');
+
+    expect(auth()->check())->toBeFalse();
+});
+
+it('renders the exact same 403 page for a mismatched state and a non-allowlisted user', function (): void {
+    // Neither must be distinguishable from the outside — otherwise the
+    // response itself becomes an oracle an attacker can use to enumerate
+    // which e-mail addresses are on the allowlist.
+    fakeIdentity();
+
+    $this->get('/auth/redirect');
+    $mismatchedState = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => 'forged-state',
+    ]));
+
+    config()->set('user-team-sync.client.allowlist', ['someone-else@example.test']);
+
+    $this->get('/auth/redirect');
+    $notAllowlisted = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $mismatchedState->assertStatus(403);
+    $notAllowlisted->assertStatus(403);
+    expect($mismatchedState->getContent())->toBe($notAllowlisted->getContent());
+});
+
 it('does not leave an intended target from an abandoned handshake for the next login', function (): void {
     fakeIdentity();
 

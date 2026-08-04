@@ -188,6 +188,15 @@ return [
         | subscription covering this app.
         */
         'subscribe_url' => env('IDENTITY_SUBSCRIBE_URL', 'https://cegem360.eu'),
+
+        /*
+        | Where to send a user back to retry signing in after a failed or
+        | refused callback (a provider outage, a rejected code, a forged or
+        | stale state, or an account not yet on the allowlist). Defaults to
+        | this app's own login page, since a phased rollout keeps the legacy
+        | password form available as a fallback for exactly this case.
+        */
+        'login_url' => env('IDENTITY_LOGIN_URL', '/login'),
     ],
 
     /*

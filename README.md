@@ -142,6 +142,9 @@ IDENTITY_REDIRECT_URI=https://this-app.example/auth/callback
 IDENTITY_REVALIDATE_MINUTES=15
 IDENTITY_GRACE_HOURS=24
 IDENTITY_RETRY_MINUTES=5
+
+# Where a failed or refused callback sends the user to retry signing in.
+IDENTITY_LOGIN_URL=/login
 ```
 
 ```php
@@ -190,6 +193,12 @@ IDENTITY_RETRY_MINUTES=5
     // Where to send a user who authenticated but has no subscription
     // covering this app.
     'subscribe_url' => env('IDENTITY_SUBSCRIBE_URL'),
+
+    // Where to send a user back to retry signing in after a failed or
+    // refused callback. Defaults to this app's own login page, since a
+    // phased rollout keeps the legacy password form available as a
+    // fallback for exactly this case.
+    'login_url' => env('IDENTITY_LOGIN_URL', '/login'),
 ],
 ```
 
@@ -203,6 +212,35 @@ IDENTITY_RETRY_MINUTES=5
 Point your login link at `route('identity.redirect')` (it accepts an optional `?intended=` relative
 path to return to after login). Both routes are registered automatically under the `web` middleware
 group when `mode` is `client` — nothing else to add to `routes/web.php`.
+
+### Callback failure pages
+
+`/auth/callback` renders a package view instead of a raw framework error for every failure it can
+distinguish from a forged or stale request. Each page uses only `__()` strings — translate them by
+publishing a JSON translation file — and none of them render a token, a client secret, a claims
+payload, or an exception message.
+
+| Situation | Status | View | Notes |
+|-----------|--------|------|-------|
+| The identity provider is unreachable, erroring, or answers with a malformed payload (`IdentityUnavailableException`) | `503` | `identity.unavailable` | Transient. The message invites the user to try again shortly; links to `client.login_url`. |
+| The provider answers and refuses the code or token (`IdentityRejectedException`) | `401` | `identity.rejected` | An authentication failure, not an outage. Invites a retry; links to `client.login_url`. Sends a `WWW-Authenticate: Bearer realm="<identity_url>"` header, as RFC 7235 requires on every 401 — harmless for this interactive HTML page, but conformant. |
+| The claims cannot be reconciled with local data, e.g. an e-mail already held by a different local identity (`IdentityConflictException`) | `409` | `identity.conflict` | The user cannot fix this themselves — the page asks them to contact support and deliberately never prints the colliding e-mail address or any other claim data. |
+| The callback's `state` does not match this session's handshake, **or** the user authenticated but is not on `client.allowlist` | `403` | `identity.refused` | Both causes render the **exact same** response — status, body, and headers — on purpose: at the response level nothing distinguishes them, so an attacker cannot probe which e-mail addresses are allowlisted by reading what a callback sends back. Links to `client.login_url`. |
+| The user authenticated but has no subscription covering this app | `200` | `identity.not-entitled` | Unchanged from before — see `client.subscribe_url`. |
+
+In every refusal path the PKCE handshake (`identity.state`, `identity.code_verifier`, `identity.intended`)
+is cleared before the response is built, exactly as it already was for a mismatched state — a friendlier
+page must never leave a reusable handshake behind.
+
+**The 403 response is identical, but the two paths that reach it are not equal-time.** A mismatched
+`state` is rejected immediately. A not-allowlisted user is rejected only after the callback has already
+made two real outbound calls to the identity provider (`exchangeCode` then `fetchClaims`), so the second
+path is measurably slower. This is a known, accepted gap, not an oversight: exploiting it requires an
+attacker's own valid `state`/`code` pair — i.e. their own handshake, initiated from their own login
+attempt — which does not obviously extend into a way to learn *other* people's e-mail addresses against
+the allowlist. It is not closed, and it should be revisited if that assumption ever stops holding (for
+example if authorization codes became replayable, or another actor could otherwise reach the
+not-allowlisted branch without completing a real handshake of their own).
 
 ### Keeping sessions self-healing: `RevalidateIdentity`
 
@@ -412,6 +450,7 @@ All sync operations are logged to the `sync_logs` table. Configure in `config/us
 | `IDENTITY_SSO_ALLOWLIST` | Comma-separated e-mails allowed through SSO during a phased rollout | — (everyone) |
 | `IDENTITY_LEGACY_RECEIVER` | Keep legacy receiver endpoints mounted alongside client mode | `true` |
 | `IDENTITY_SUBSCRIBE_URL` | Where to send an authenticated user with no entitlement for this app | `https://cegem360.eu` |
+| `IDENTITY_LOGIN_URL` | Where to send the user back to retry after a failed or refused callback | `/login` |
 
 ## Testing
 
