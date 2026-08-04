@@ -345,6 +345,29 @@ it('refreshes an expired access token instead of logging the user out', function
         && $request->hasHeader('Authorization', 'Bearer access-2'));
 });
 
+it('keeps the session when the provider goes down between the 401 and the refresh', function (): void {
+    // The access token aged out and the provider fell over before the refresh
+    // could be exchanged. The 401 arrived first, but it is the *refresh* that
+    // decides, and it never got an answer — so this is an outage, not a
+    // revocation, and the session belongs in the grace window.
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response(['message' => 'Unauthenticated.'], 401),
+        'identity.test/oauth/token' => Http::response('gateway down', 502),
+    ]);
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+            IdentitySession::REFRESH_TOKEN => encrypt('refresh-1'),
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    expect(Auth::check())->toBeTrue()
+        ->and(session(IdentitySession::GRACE_STARTED_AT))->not->toBeNull();
+});
+
 it('clears the grace marker after a successful revalidation', function (): void {
     Http::fake(['identity.test/api/userinfo' => Http::response(claimsResponse())]);
 
