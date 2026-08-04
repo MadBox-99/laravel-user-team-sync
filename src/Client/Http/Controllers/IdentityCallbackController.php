@@ -41,6 +41,12 @@ final class IdentityCallbackController
 
         $user = $provisioner->provision($claims);
 
+        // Captured before forgetHandshake() clears it below — belt and
+        // braces: re-validate even though IdentityRedirectController already
+        // filtered on the way in, so a session poisoned by any other means
+        // still cannot bounce the user off this app.
+        $intended = $this->safeIntended();
+
         IdentitySession::forgetHandshake();
 
         /** @var array<int, string> $apps */
@@ -62,9 +68,23 @@ final class IdentityCallbackController
         IdentitySession::markChecked();
         IdentitySession::clearGrace();
 
-        $intended = Session::pull(IdentitySession::INTENDED);
+        return redirect()->to($intended ?? '/');
+    }
 
-        return redirect()->to(is_string($intended) && $intended !== '' ? $intended : '/');
+    private function safeIntended(): ?string
+    {
+        $intended = Session::get(IdentitySession::INTENDED);
+
+        if (! is_string($intended) || $intended === '') {
+            return null;
+        }
+
+        return $this->isSafeIntended($intended) ? $intended : null;
+    }
+
+    private function isSafeIntended(string $path): bool
+    {
+        return str_starts_with($path, '/') && ! str_starts_with($path, '//');
     }
 
     private function assertAllowlisted(string $email): void

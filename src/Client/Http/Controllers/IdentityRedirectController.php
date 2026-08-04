@@ -22,11 +22,24 @@ final class IdentityRedirectController
         Session::put(IdentitySession::CODE_VERIFIER, $verifier);
 
         if ($request->filled('intended')) {
-            Session::put(IdentitySession::INTENDED, (string) $request->string('intended'));
+            $intended = (string) $request->string('intended');
+
+            // Same-app relative path only — a single leading '/', never '//'
+            // (protocol-relative, absolute to a browser). Anything else is
+            // silently dropped rather than rejected: a forged intended value
+            // should not turn a login attempt into an error page.
+            if ($this->isSafeIntended($intended)) {
+                Session::put(IdentitySession::INTENDED, $intended);
+            }
         }
 
         $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
 
         return redirect()->away($client->authorizeUrl($state, $challenge));
+    }
+
+    private function isSafeIntended(string $path): bool
+    {
+        return str_starts_with($path, '/') && ! str_starts_with($path, '//');
     }
 }

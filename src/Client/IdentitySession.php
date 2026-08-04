@@ -88,7 +88,12 @@ final class IdentitySession
 
     public static function forgetHandshake(): void
     {
-        Session::forget([self::STATE, self::CODE_VERIFIER]);
+        // INTENDED is included so an abandoned attempt (forged state,
+        // allowlist rejection) never leaks its target into a later,
+        // unrelated login in the same session. The one path that legitimately
+        // needs INTENDED — a successful callback — reads it before calling
+        // this method.
+        Session::forget([self::STATE, self::CODE_VERIFIER, self::INTENDED]);
     }
 
     public static function forget(): void

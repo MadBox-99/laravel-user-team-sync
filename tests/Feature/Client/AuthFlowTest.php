@@ -170,3 +170,65 @@ it('stores the refresh token encrypted rather than in the clear', function (): v
     expect(session('identity.refresh_token'))->not->toBe('refresh-1')
         ->and(decrypt(session('identity.refresh_token')))->toBe('refresh-1');
 });
+
+it('does not let an absolute intended url turn the callback into an open redirect', function (): void {
+    fakeIdentity();
+
+    $this->get('/auth/redirect?'.http_build_query(['intended' => 'https://evil.example/phish']));
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertRedirect('/');
+});
+
+it('does not let a protocol-relative intended url turn the callback into an open redirect', function (): void {
+    fakeIdentity();
+
+    $this->get('/auth/redirect?'.http_build_query(['intended' => '//evil.example/phish']));
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertRedirect('/');
+});
+
+it('redirects to a legitimate relative intended path', function (): void {
+    fakeIdentity();
+
+    $this->get('/auth/redirect?'.http_build_query(['intended' => '/app/acme-kft/customers']));
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertRedirect('/app/acme-kft/customers');
+});
+
+it('does not leave an intended target from an abandoned handshake for the next login', function (): void {
+    fakeIdentity();
+
+    $this->get('/auth/redirect?'.http_build_query(['intended' => '/first-attempt']));
+
+    // Abandon: a forged state triggers forgetHandshake() without the
+    // intended value ever being consumed by a redirect.
+    $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => 'forged-state',
+    ]))->assertForbidden();
+
+    // A fresh handshake, this time with no intended param at all.
+    $this->get('/auth/redirect');
+
+    $response = $this->get('/auth/callback?'.http_build_query([
+        'code' => 'code-1',
+        'state' => session('identity.state'),
+    ]));
+
+    $response->assertRedirect('/');
+});
