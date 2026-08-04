@@ -111,6 +111,89 @@ it('fetches the claims with a bearer token', function (): void {
     Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer access-1'));
 });
 
+it('treats a 2xx body that is not json as an outage', function (): void {
+    // The provider is mid-deploy and answers 200 with an HTML maintenance
+    // page. Letting that through would 500 every page of every module app.
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response('<html><body>Be right back</body></html>'),
+    ]);
+
+    expect(fn () => app(IdentityClient::class)->fetchClaims('access-1'))
+        ->toThrow(IdentityUnavailableException::class);
+});
+
+it('treats a non-array apps claim as an outage', function (): void {
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response([
+            'sub' => '11111111-1111-4111-8111-111111111111',
+            'email' => 'anna@example.test',
+            'name' => 'Anna Teszt',
+            'orgs' => [],
+            'apps' => 'crm',
+        ]),
+    ]);
+
+    expect(fn () => app(IdentityClient::class)->fetchClaims('access-1'))
+        ->toThrow(IdentityUnavailableException::class);
+});
+
+it('treats an org entry without a slug as an outage', function (): void {
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response([
+            'sub' => '11111111-1111-4111-8111-111111111111',
+            'email' => 'anna@example.test',
+            'name' => 'Anna Teszt',
+            'orgs' => [['uuid' => '22222222-2222-4222-8222-222222222222', 'name' => 'Acme Kft.']],
+            'apps' => ['crm'],
+        ]),
+    ]);
+
+    expect(fn () => app(IdentityClient::class)->fetchClaims('access-1'))
+        ->toThrow(IdentityUnavailableException::class);
+});
+
+it('treats an org entry without a name as an outage', function (): void {
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response([
+            'sub' => '11111111-1111-4111-8111-111111111111',
+            'email' => 'anna@example.test',
+            'name' => 'Anna Teszt',
+            'orgs' => [['uuid' => '22222222-2222-4222-8222-222222222222', 'slug' => 'acme-kft']],
+            'apps' => ['crm'],
+        ]),
+    ]);
+
+    expect(fn () => app(IdentityClient::class)->fetchClaims('access-1'))
+        ->toThrow(IdentityUnavailableException::class);
+});
+
+it('treats claims without a sub as an outage', function (): void {
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response([
+            'email' => 'anna@example.test',
+            'name' => 'Anna Teszt',
+        ]),
+    ]);
+
+    expect(fn () => app(IdentityClient::class)->fetchClaims('access-1'))
+        ->toThrow(IdentityUnavailableException::class);
+});
+
+it('accepts claims that carry no orgs and no apps at all', function (): void {
+    // Absent is not the same as malformed: a user with no memberships and no
+    // entitlements is a perfectly well-formed payload.
+    Http::fake([
+        'identity.test/api/userinfo' => Http::response([
+            'sub' => '11111111-1111-4111-8111-111111111111',
+            'email' => 'anna@example.test',
+            'name' => 'Anna Teszt',
+        ]),
+    ]);
+
+    expect(app(IdentityClient::class)->fetchClaims('access-1'))
+        ->toHaveKey('sub');
+});
+
 it('refreshes an expired access token', function (): void {
     Http::fake([
         'identity.test/oauth/token' => Http::response([

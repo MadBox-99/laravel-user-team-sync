@@ -65,10 +65,67 @@ final class IdentityClient
             ->acceptJson()
             ->get($this->baseUrl().'/api/userinfo'));
 
-        /** @var array<string, mixed> $claims */
         $claims = $response->json();
 
+        if (! is_array($claims) || ! $this->isWellFormed($claims)) {
+            // A 2xx whose body is not a claims payload — a maintenance page, a
+            // proxy error page, a truncated response — means the provider is
+            // not answering properly. That is an outage, not a revocation:
+            // letting it through would 500 every page in the fleet, and
+            // reading it as a rejection would log the fleet out over a deploy.
+            throw new IdentityUnavailableException(
+                'The identity provider returned a malformed claims payload.',
+            );
+        }
+
+        /** @var array<string, mixed> $claims */
         return $claims;
+    }
+
+    /**
+     * Every consumer downstream — the provisioner, the entitlement check —
+     * indexes into these keys directly, so the shape is enforced once here at
+     * the boundary rather than defended against everywhere afterwards.
+     *
+     * @param  array<mixed>  $claims
+     */
+    private function isWellFormed(array $claims): bool
+    {
+        foreach (['sub', 'email', 'name'] as $key) {
+            if (! isset($claims[$key]) || ! is_string($claims[$key]) || $claims[$key] === '') {
+                return false;
+            }
+        }
+
+        if (isset($claims['role']) && ! is_string($claims['role'])) {
+            return false;
+        }
+
+        $apps = $claims['apps'] ?? [];
+
+        if (! is_array($apps) || array_filter($apps, 'is_string') !== $apps) {
+            return false;
+        }
+
+        $orgs = $claims['orgs'] ?? [];
+
+        if (! is_array($orgs)) {
+            return false;
+        }
+
+        foreach ($orgs as $org) {
+            if (! is_array($org)) {
+                return false;
+            }
+
+            foreach (['uuid', 'name', 'slug'] as $key) {
+                if (! isset($org[$key]) || ! is_string($org[$key]) || $org[$key] === '') {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

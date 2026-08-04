@@ -16,6 +16,7 @@ use Madbox99\UserTeamSync\Client\IdentityClient;
 use Madbox99\UserTeamSync\Client\IdentityProvisioner;
 use Madbox99\UserTeamSync\Client\IdentitySession;
 use Symfony\Component\HttpFoundation\Response;
+use Throwable;
 
 /**
  * Re-fetches the claims and re-runs the provisioner when the session's last
@@ -41,30 +42,40 @@ final class RevalidateIdentity
             return $next($request);
         }
 
+        // Only two things may end a session here: the provider saying no, and
+        // a conflict that cannot be reconciled. Everything else — an outage, a
+        // malformed payload, an outright bug — is tolerated, because this
+        // middleware runs on every authenticated page of every module app and
+        // an escaping exception is a fleet-wide 500.
         try {
             $claims = $this->fetchClaims();
+
+            /** @var array<int, string> $apps */
+            $apps = $claims['apps'] ?? [];
+
+            if (! in_array((string) config('user-team-sync.client.app_key'), $apps, true)) {
+                return $this->logout($request);
+            }
+
+            $this->provisioner->provision($claims);
         } catch (IdentityRejectedException) {
             // The provider answered, and the answer was no.
             return $this->logout($request);
-        } catch (IdentityUnavailableException $exception) {
-            return $this->tolerateOutage($request, $next, $exception);
-        }
-
-        /** @var array<int, string> $apps */
-        $apps = $claims['apps'] ?? [];
-
-        if (! in_array((string) config('user-team-sync.client.app_key'), $apps, true)) {
-            return $this->logout($request);
-        }
-
-        try {
-            $this->provisioner->provision($claims);
         } catch (IdentityConflictException $exception) {
             Log::warning('user-team-sync: identity conflict during revalidation.', [
                 'message' => $exception->getMessage(),
             ]);
 
             return $this->logout($request);
+        } catch (IdentityUnavailableException $exception) {
+            return $this->tolerateOutage($request, $next, $exception);
+        } catch (Throwable $exception) {
+            Log::error('user-team-sync: unexpected failure during identity revalidation.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return $this->tolerateOutage($request, $next, $exception);
         }
 
         IdentitySession::markChecked();
@@ -116,7 +127,7 @@ final class RevalidateIdentity
         return $checkedAt->greaterThan(Carbon::now()->subMinutes($minutes));
     }
 
-    private function tolerateOutage(Request $request, Closure $next, IdentityUnavailableException $exception): Response
+    private function tolerateOutage(Request $request, Closure $next, Throwable $exception): Response
     {
         IdentitySession::startGrace();
 
@@ -124,7 +135,9 @@ final class RevalidateIdentity
         $hours = (int) config('user-team-sync.client.grace_hours', 24);
 
         if ($graceStartedAt !== null && $graceStartedAt->lessThan(Carbon::now()->subHours($hours))) {
-            Log::warning('user-team-sync: grace period expired while the identity provider was unreachable.');
+            Log::warning('user-team-sync: grace period expired while the identity provider was unreachable.', [
+                'message' => $exception->getMessage(),
+            ]);
 
             return $this->logout($request);
         }

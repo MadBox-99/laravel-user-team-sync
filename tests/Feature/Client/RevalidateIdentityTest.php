@@ -157,6 +157,42 @@ it('keeps the session alive when the identity provider is down', function (): vo
     expect(Auth::check())->toBeTrue();
 });
 
+it('keeps the session alive when the provider answers 200 with a maintenance page', function (): void {
+    // Mid-deploy the provider serves HTML with HTTP 200. Every module app in
+    // the fleet would 500 on every page — the outage the grace window exists
+    // to prevent, arriving through an unguarded door.
+    Http::fake(['identity.test/api/userinfo' => Http::response('<html>Be right back</html>')]);
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    expect(Auth::check())->toBeTrue();
+});
+
+it('tolerates an unexpected failure instead of 500-ing the page', function (): void {
+    Http::fake(['identity.test/api/userinfo' => Http::response(claimsResponse())]);
+
+    // Any bug at all inside the provisioning path. The page must still render.
+    Team::saving(function (): void {
+        throw new RuntimeException('boom');
+    });
+
+    $this->actingAs($this->user)
+        ->withSession([
+            IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp,
+            IdentitySession::ACCESS_TOKEN => encrypt('access-1'),
+        ])
+        ->get('/protected')
+        ->assertOk();
+
+    expect(Auth::check())->toBeTrue();
+});
+
 it('logs the user out once the grace period has run out', function (): void {
     Http::fake(['identity.test/api/userinfo' => Http::response('down', 503)]);
 
