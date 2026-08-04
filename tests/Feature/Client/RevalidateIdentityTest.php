@@ -60,6 +60,35 @@ it('does not call the identity provider while the check is still fresh', functio
     Http::assertNothingSent();
 });
 
+it('leaves a legacy password login alone instead of logging it out', function (): void {
+    // The phased rollout runs both login paths in the same app: only the
+    // allowlisted pilot users go through SSO, everyone else keeps using the
+    // password form. Their session carries no identity token at all, so there
+    // is nothing to revalidate — and nothing to log out either.
+    Http::fake();
+
+    $this->actingAs($this->user)
+        ->get('/protected')
+        ->assertOk();
+
+    Http::assertNothingSent();
+
+    expect(Auth::check())->toBeTrue();
+});
+
+it('logs out an sso session whose access token is gone', function (): void {
+    // The mirror image of the test above: a session that *was* established
+    // through SSO but has lost its token is a revocation, not a legacy login.
+    Http::fake();
+
+    $this->actingAs($this->user)
+        ->withSession([IdentitySession::CHECKED_AT => Carbon::now()->subMinutes(20)->timestamp])
+        ->get('/protected')
+        ->assertRedirect();
+
+    expect(Auth::check())->toBeFalse();
+});
+
 it('re-runs the provisioner once the check is stale', function (): void {
     Http::fake(['identity.test/api/userinfo' => Http::response(claimsResponse())]);
 

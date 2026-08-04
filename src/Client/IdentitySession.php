@@ -45,6 +45,21 @@ final class IdentitySession
         }
     }
 
+    /**
+     * Whether this session was ever established through SSO at all.
+     *
+     * During a phased rollout both login paths run side by side in the same
+     * app: an allowlisted user comes through the identity provider, everyone
+     * else keeps using the ordinary password form. A session carrying neither
+     * a token nor a check marker never went through the identity provider, so
+     * it is out of the revalidation middleware's scope entirely — which is a
+     * different thing from an SSO session whose access was taken away.
+     */
+    public static function exists(): bool
+    {
+        return Session::has(self::ACCESS_TOKEN) || Session::has(self::CHECKED_AT);
+    }
+
     public static function accessToken(): ?string
     {
         return self::decrypt(self::ACCESS_TOKEN);

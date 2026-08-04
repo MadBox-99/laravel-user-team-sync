@@ -31,7 +31,13 @@ final class RevalidateIdentity
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (! Auth::check() || $this->isFresh()) {
+        // IdentitySession::exists() is the rollout guard: while the pilot runs,
+        // the same app still signs users in through the legacy password form,
+        // and such a session has no tokens to revalidate. Treating it as an
+        // expired SSO session would log every non-pilot user out. It also
+        // covers Auth::login(..., remember: true): the recaller re-authenticates
+        // into a brand new session, which must not be bounced on sight.
+        if (! Auth::check() || ! IdentitySession::exists() || $this->isFresh()) {
             return $next($request);
         }
 
