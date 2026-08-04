@@ -201,7 +201,8 @@ it('adopts a local team that matches by slug and has no uuid', function (): void
     ]));
 
     expect(Team::query()->count())->toBe(1)
-        ->and($existing->fresh()->uuid)->toBe('22222222-2222-4222-8222-222222222222');
+        ->and($existing->fresh()->uuid)->toBe('22222222-2222-4222-8222-222222222222')
+        ->and($existing->fresh()->slug)->toBe('acme-kft');
 });
 
 it('suffixes the slug when a different team already owns it', function (): void {
