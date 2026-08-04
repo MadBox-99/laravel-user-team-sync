@@ -26,6 +26,8 @@ final class IdentityProvisioner
 
             $this->applyRole($user, (string) ($claims['role'] ?? ''));
 
+            $this->syncTeams($user, $claims['orgs'] ?? []);
+
             return $user;
         });
     }
@@ -127,5 +129,79 @@ final class IdentityProvisioner
         }
 
         $user->forceFill(['role' => $claimRole])->save();
+    }
+
+    /**
+     * @param  array<int, array<string, string>>  $orgs
+     */
+    private function syncTeams(Model $user, array $orgs): void
+    {
+        $teamIds = [];
+
+        foreach ($orgs as $org) {
+            $teamIds[] = $this->resolveTeam($org)->getKey();
+        }
+
+        // sync(), not syncWithoutDetaching(): the token carries complete state,
+        // so a membership that is absent from it has genuinely ended.
+        $user->teams()->sync($teamIds);
+    }
+
+    /**
+     * Resolution order: uuid, then an uuid-less local team with the same slug
+     * (adoption), then creation. Adoption keeps the legacy push and the SSO
+     * path from building duplicates of each other's teams while both run.
+     *
+     * @param  array<string, string>  $org
+     */
+    private function resolveTeam(array $org): Model
+    {
+        /** @var class-string<Model> $teamModel */
+        $teamModel = config('user-team-sync.models.team');
+
+        $uuid = $org['uuid'];
+
+        $team = $teamModel::query()->where('uuid', $uuid)->first();
+
+        if (! $team instanceof Model) {
+            $team = $teamModel::query()
+                ->where('slug', $org['slug'])
+                ->whereNull('uuid')
+                ->first();
+        }
+
+        $team ??= new $teamModel;
+
+        $team->forceFill([
+            'uuid' => $uuid,
+            'name' => $org['name'],
+            'slug' => $this->availableSlug($teamModel, $org['slug'], $team->exists ? $team->getKey() : null),
+        ])->save();
+
+        return $team;
+    }
+
+    /**
+     * The team being resolved must not see itself as a collision: on the
+     * adoption branch it already holds the slug it is about to keep. Only a
+     * *different* row taking the slug earns a suffix.
+     *
+     * @param  class-string<Model>  $teamModel
+     */
+    private function availableSlug(string $teamModel, string $slug, int|string|null $exceptId): string
+    {
+        $candidate = $slug;
+        $suffix = 1;
+
+        while ($teamModel::query()
+            ->where('slug', $candidate)
+            ->when($exceptId !== null, fn ($query) => $query->whereKeyNot($exceptId))
+            ->exists()
+        ) {
+            $suffix++;
+            $candidate = $slug.'-'.$suffix;
+        }
+
+        return $candidate;
     }
 }

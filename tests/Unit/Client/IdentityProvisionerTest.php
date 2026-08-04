@@ -4,8 +4,15 @@ declare(strict_types=1);
 
 use Madbox99\UserTeamSync\Client\Exceptions\IdentityConflictException;
 use Madbox99\UserTeamSync\Client\IdentityProvisioner;
+use Madbox99\UserTeamSync\Tests\Fixtures\Team;
+use Madbox99\UserTeamSync\Tests\Fixtures\TeamWithoutUuidFillable;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
 use Madbox99\UserTeamSync\Tests\Fixtures\UserWithoutUuidFillable;
+
+function org(string $uuid, string $name, string $slug): array
+{
+    return ['uuid' => $uuid, 'name' => $name, 'slug' => $slug];
+}
 
 function claims(array $overrides = []): array
 {
@@ -153,4 +160,102 @@ it('stores the role on the users table when the role driver is not spatie', func
     $user = app(IdentityProvisioner::class)->provision(claims());
 
     expect($user->fresh()->role)->toBe('manager');
+});
+
+it('creates the team from the orgs claim and attaches the user', function (): void {
+    $user = app(IdentityProvisioner::class)->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
+    ]));
+
+    $team = Team::query()->firstWhere('uuid', '22222222-2222-4222-8222-222222222222');
+
+    expect($team)->not->toBeNull()
+        ->and($team->slug)->toBe('acme-kft')
+        ->and($user->teams()->pluck('teams.id')->all())->toBe([$team->getKey()]);
+});
+
+it('follows a team rename instead of creating a second team', function (): void {
+    // This is the bug the whole project exists to kill: the publisher renames a
+    // team, the slug changes, and the receiver used to match on slug forever.
+    $provisioner = app(IdentityProvisioner::class);
+
+    $provisioner->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
+    ]));
+
+    $user = $provisioner->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Zrt.', 'acme-zrt')],
+    ]));
+
+    expect(Team::query()->count())->toBe(1)
+        ->and(Team::query()->first()->slug)->toBe('acme-zrt')
+        ->and($user->teams()->count())->toBe(1);
+});
+
+it('adopts a local team that matches by slug and has no uuid', function (): void {
+    // crm has 16 such teams in production.
+    $existing = Team::query()->create(['uuid' => null, 'name' => 'Acme Kft.', 'slug' => 'acme-kft']);
+
+    app(IdentityProvisioner::class)->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
+    ]));
+
+    expect(Team::query()->count())->toBe(1)
+        ->and($existing->fresh()->uuid)->toBe('22222222-2222-4222-8222-222222222222');
+});
+
+it('suffixes the slug when a different team already owns it', function (): void {
+    // Two unrelated organisations may legitimately want the same slug. Unlike
+    // the e-mail case, this is not an identity clash — so it gets a suffix
+    // rather than refusing the login.
+    Team::query()->create([
+        'uuid' => '99999999-9999-4999-8999-999999999999',
+        'name' => 'Masik Acme',
+        'slug' => 'acme-kft',
+    ]);
+
+    app(IdentityProvisioner::class)->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
+    ]));
+
+    $team = Team::query()->firstWhere('uuid', '22222222-2222-4222-8222-222222222222');
+
+    expect(Team::query()->count())->toBe(2)
+        ->and($team->slug)->toBe('acme-kft-2');
+});
+
+it('detaches the user from a team that is no longer in the claims', function (): void {
+    // The token is complete state, so an absence is information. Nothing in the
+    // legacy sync ever removed a membership.
+    $provisioner = app(IdentityProvisioner::class);
+
+    $provisioner->provision(claims([
+        'orgs' => [
+            org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft'),
+            org('33333333-3333-4333-8333-333333333333', 'Bolt Bt.', 'bolt-bt'),
+        ],
+    ]));
+
+    $user = $provisioner->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
+    ]));
+
+    expect($user->teams()->pluck('teams.slug')->all())->toBe(['acme-kft']);
+});
+
+it('writes the team uuid even when the receiver team model does not list it as fillable', function (): void {
+    config()->set('user-team-sync.models.team', TeamWithoutUuidFillable::class);
+
+    app(IdentityProvisioner::class)->provision(claims([
+        'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
+    ]));
+
+    expect(TeamWithoutUuidFillable::query()->first()->uuid)
+        ->toBe('22222222-2222-4222-8222-222222222222');
+});
+
+it('leaves the user in no team when the orgs claim is empty', function (): void {
+    $user = app(IdentityProvisioner::class)->provision(claims(['orgs' => []]));
+
+    expect($user->teams()->count())->toBe(0);
 });
