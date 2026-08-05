@@ -178,8 +178,19 @@ return [
         /*
         | Maps a role name from the token onto a local role name. The publisher
         | sends lower-case values ('admin', 'manager', 'subscriber') while a
-        | receiver may name its roles differently ('Manager'). Leave empty to
-        | rely on the case-insensitive fallback in IdentityProvisioner.
+        | receiver may name its roles differently ('Manager', 'technician').
+        | Honoured on both role drivers.
+        |
+        | With 'receiver.role_driver' => 'spatie' the roles table supplies this
+        | app's vocabulary, so an unmapped claim role still gets a chance at the
+        | case-insensitive match and then at 'receiver.default_role'.
+        |
+        | On any other driver the role goes into a plain users.role column,
+        | which publishes no vocabulary at all — the package deliberately does
+        | not introspect enum casts or CHECK constraints. There an unmapped
+        | claim role is written verbatim (the long-standing pass-through) and
+        | 'receiver.default_role' never applies, so this map must cover every
+        | role the publisher can send whose local spelling differs.
         */
         'role_map' => [],
 

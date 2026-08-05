@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `IdentityProvisioner::applyRole()` now honours `client.role_map` on the non-Spatie
+  (plain `users.role` column) path as well, instead of writing the raw claim role. A
+  receiver whose local vocabulary differs from the publisher's — e.g. a `users.role`
+  cast to an enum of `admin|technician|viewer` against the publisher's
+  `admin|manager|subscriber` — could not sign such a user in at all: the write threw
+  `ValueError: "subscriber" is not a valid backing value for enum`. The map was written
+  and ignored.
+
+  Not a behaviour change for a receiver whose vocabulary already equals the publisher's:
+  an unmapped claim role is still written verbatim. On the column path the claim role is
+  treated as its own local vocabulary, so `receiver.default_role` remains unreachable
+  there, exactly as before.
+
 ## [1.1.0] - 2026-02-10
 
 ### Added

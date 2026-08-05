@@ -153,7 +153,20 @@ final class IdentityProvisioner
             return;
         }
 
-        $user->forceFill(['role' => $claimRole])->save();
+        // A plain column has no roles table to enumerate, so the honest value
+        // for $localRoleNames is the claim role itself: on this path the app
+        // never tells us its vocabulary, and the only thing we know is allowed
+        // is what the publisher already sends — three fleet apps run exactly
+        // that way. Passing [] instead would be a lie ("this app has no roles")
+        // and would send every unmapped role to default_role, replacing a
+        // working login with a broken one on those apps.
+        //
+        // The consequence is deliberate: role_map is the *only* way to state a
+        // translation for a plain column, and an unmapped role is passed
+        // through verbatim rather than decaying to default_role. An app whose
+        // column rejects a publisher role must say so in role_map; we do not
+        // introspect enum casts or CHECK constraints to guess.
+        $user->forceFill(['role' => $this->resolveRoleName($claimRole, [$claimRole])])->save();
     }
 
     /**
