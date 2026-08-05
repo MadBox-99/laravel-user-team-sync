@@ -109,7 +109,11 @@ it('throws exception on HTTP connection error', function (): void {
 
 it('sends the uuid in the create-user payload', function (): void {
     Illuminate\Support\Facades\Http::fake([
-        'https://crm.test/api/user-teams' => Illuminate\Support\Facades\Http::response(['teams' => []]),
+        // Wildcard: the job appends a `user_email` query string to this
+        // request, so a pattern without `*` never matches it — Laravel's
+        // HTTP fake then lets the request fall through to the real network
+        // instead of failing loudly, which is exactly what happened here.
+        'https://crm.test/api/user-teams*' => Illuminate\Support\Facades\Http::response(['teams' => []]),
         'https://crm.test/api/create-user' => Illuminate\Support\Facades\Http::response(['user_id' => 1], 201),
     ]);
 
@@ -132,5 +136,10 @@ it('sends the uuid in the create-user payload', function (): void {
     Illuminate\Support\Facades\Http::assertSent(
         fn ($request): bool => $request->url() === 'https://crm.test/api/create-user'
             && $request['uuid'] === $uuid
+    );
+
+    Illuminate\Support\Facades\Http::assertSent(
+        fn ($request): bool => str_starts_with($request->url(), 'https://crm.test/api/user-teams')
+            && $request['user_email'] === 'owner@example.com'
     );
 });
