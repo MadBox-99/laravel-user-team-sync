@@ -186,8 +186,8 @@ IDENTITY_LOGIN_URL=/login
     // side by side. Turn off once the rollout is complete.
     'legacy_receiver' => env('IDENTITY_LEGACY_RECEIVER', true),
 
-    // Maps a token role name onto a local role name; leave empty to rely on
-    // the case-insensitive fallback in IdentityProvisioner.
+    // Maps a token role name onto a local role name. Honoured on both role
+    // drivers — see "Translating roles" below.
     'role_map' => [],
 
     // Where to send a user who authenticated but has no subscription
@@ -201,6 +201,56 @@ IDENTITY_LOGIN_URL=/login
     'login_url' => env('IDENTITY_LOGIN_URL', '/login'),
 ],
 ```
+
+### Translating roles
+
+The identity provider sends one lower-case role name per login (`admin`, `manager`,
+`subscriber`). `client.role_map` translates it onto whatever this app calls that role, and it
+applies **whichever** `receiver.role_driver` is set — Spatie roles and a plain `users.role`
+column alike.
+
+```php
+'receiver' => ['role_driver' => 'default', 'default_role' => 'viewer'],
+
+'client' => [
+    'role_map' => [
+        'admin' => 'admin',
+        'manager' => 'technician',
+        'subscriber' => 'viewer',
+    ],
+],
+```
+
+How a claim role is resolved:
+
+| Driver | 1. `role_map` hit | 2. no hit | 3. still nothing |
+|--------|-------------------|-----------|------------------|
+| `spatie` | the mapped role name | a real local role whose name matches case-insensitively | `receiver.default_role` |
+| anything else (plain `users.role` column) | the mapped value | the claim role, verbatim | — unreachable |
+
+The two drivers differ in step 2 on purpose. Under Spatie the roles table lists the app's
+vocabulary, so an unknown claim role can be recognised by spelling or sent to
+`default_role`. A plain column publishes no vocabulary — the package does **not** introspect
+enum casts or `CHECK` constraints — so the only value it knows the column accepts is the one
+the publisher already sends. It is therefore written through unchanged, and `default_role`
+never applies on that path.
+
+The practical consequences:
+
+- If your local vocabulary equals the publisher's, you need no map. This is the pass-through
+  the package has always had on the column path, and it is unchanged.
+- If it differs, `role_map` is the only way to say so, and it must cover **every** role the
+  publisher can send. A role you leave out reaches the column raw — and if the column is cast
+  to an enum that does not accept it, that login fails with a `ValueError`. The map is where
+  you state the app's vocabulary, because nothing else tells the package what it is.
+- `receiver.default_role` must itself name a role this app accepts. The package cannot
+  validate it: under Spatie an unknown default makes `syncRoles()` throw, and on the column
+  path it is your own reading code that would reject the value. Set it to something real.
+
+> **Changed in the next release.** Before it, `role_map` was consulted only on the Spatie
+> path; the column path wrote the raw claim role and ignored the map entirely. Apps whose
+> local vocabulary equals the publisher's see no behaviour change — an unmapped role still
+> passes through verbatim.
 
 ### Routes
 

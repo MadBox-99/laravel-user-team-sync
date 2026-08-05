@@ -203,6 +203,63 @@ it('stores the role on the users table when the role driver is not spatie', func
     expect($user->fresh()->role)->toBe('manager');
 });
 
+it('translates the claim role through the role map when the role driver is not spatie', function (): void {
+    // field.cegem360.eu casts users.role to an enum of admin|technician|viewer
+    // while the publisher sends admin|manager|subscriber. Verified against the
+    // live app: writing the raw claim role there throws
+    // ValueError: "subscriber" is not a valid backing value for enum App\Enums\UserRole
+    // on the first manager or subscriber login, and the user cannot sign in. So
+    // the map has to be honoured on the plain-column path too, not only under
+    // Spatie, or an app whose vocabulary differs from the publisher's has no
+    // way to state the translation at all.
+    config()->set('user-team-sync.receiver.role_driver', 'default');
+    config()->set('user-team-sync.client.role_map', [
+        'admin' => 'admin',
+        'manager' => 'technician',
+        'subscriber' => 'viewer',
+    ]);
+
+    $user = app(IdentityProvisioner::class)->provision(claims(['role' => 'manager']));
+
+    expect($user->fresh()->role)->toBe('technician');
+});
+
+it('writes the claim role verbatim when the role map does not mention it', function (): void {
+    // Pins the pass-through that supply, workflow and mes depend on: they run
+    // the plain-column path and their local vocabulary already equals the
+    // publisher's, so they carry no map entry for these roles. An unmapped role
+    // must stay exactly what the token said.
+    //
+    // The default_role here is deliberately different from the claim role: on
+    // the plain-column path the claim role is its own local vocabulary, so
+    // resolveRoleName() must match it and must never decay to default_role. On
+    // mes and supply that default ('subscriber') is not a value their own code
+    // accepts, so decaying to it would replace a working login with a broken
+    // one on three production apps at once.
+    config()->set('user-team-sync.receiver.role_driver', 'default');
+    config()->set('user-team-sync.receiver.default_role', 'viewer');
+    config()->set('user-team-sync.client.role_map', ['subscriber' => 'viewer']);
+
+    $user = app(IdentityProvisioner::class)->provision(claims(['role' => 'manager']));
+
+    expect($user->fresh()->role)->toBe('manager');
+});
+
+it('preserves the exact casing of an unmapped claim role on the plain-column path', function (): void {
+    // The case-insensitive fallback exists to map a claim onto a *known* local
+    // spelling. A plain column publishes no spelling, so there is nothing to
+    // normalise towards and the token's own value has to survive byte for byte
+    // — a column with a CHECK constraint or an enum cast would reject a
+    // silently re-cased value.
+    config()->set('user-team-sync.receiver.role_driver', 'default');
+    config()->set('user-team-sync.receiver.default_role', 'viewer');
+    config()->set('user-team-sync.client.role_map', []);
+
+    $user = app(IdentityProvisioner::class)->provision(claims(['role' => 'Sales Representative']));
+
+    expect($user->fresh()->role)->toBe('Sales Representative');
+});
+
 it('creates the team from the orgs claim and attaches the user', function (): void {
     $user = app(IdentityProvisioner::class)->provision(claims([
         'orgs' => [org('22222222-2222-4222-8222-222222222222', 'Acme Kft.', 'acme-kft')],
