@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-09-30
+
+### Added
+- Team membership removal. `RemoveTeamMemberJob` (publisher, one job per app — also via
+  `UserTeamSync::removeTeamMember()`) posts to the new receiver endpoint
+  `POST /api/remove-team-member` with `user_email`, `team_slug` and the optional
+  `user_uuid` / `team_uuid`. The receiver detaches the user from the local team and
+  never deletes or deactivates the account.
+  - Identity follows `update-team`: uuid first, then email / slug; a local uuid that
+    disagrees with the incoming one is a `409`.
+  - Idempotent: an already-ended membership is `200` with `removed: false`; an unknown
+    user or team is `404`, logged by the publisher as `skipped` (no retry, no
+    `TeamSyncFailed`). A matching `pending_team_attachments` row is always dropped, so
+    a late `create-user` cannot resurrect the membership.
+  - A host `users.team_id` (primary team) that pointed at the removed team is repointed
+    to the lowest remaining team id, or `NULL`.
+  - Inbound and outbound `sync_logs` entries under the new `SyncAction::RemoveTeamMember`
+    (`remove_team_member`); receiver fires `TeamMemberRemovedFromSync`.
+- Client (SSO) mode is unchanged: it still writes the token's complete team state at
+  login and on revalidation.
+
+## [1.16.0] - 2026-08-05
+
 ### Fixed
 - `IdentityProvisioner::applyRole()` now honours `client.role_map` on the non-Spatie
   (plain `users.role` column) path as well, instead of writing the raw claim role. A

@@ -22,7 +22,8 @@ src/
 │       ├── CreateUserJob.php      # Broadcasts new user to all active apps
 │       ├── SyncUserJob.php        # Broadcasts field changes
 │       ├── CreateTeamJob.php      # Creates team on receiver apps
-│       └── ToggleUserActiveJob.php # Toggles active status on specific app
+│       ├── ToggleUserActiveJob.php # Toggles active status on specific app
+│       └── RemoveTeamMemberJob.php # Ends a team membership on specific app
 ├── Receiver/
 │   └── Http/
 │       ├── Controllers/           # API endpoints for incoming sync

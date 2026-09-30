@@ -12,4 +12,5 @@ enum SyncAction: string
     case UpdateTeam = 'update_team';
     case ToggleActive = 'toggle_active';
     case SyncPassword = 'sync_password';
+    case RemoveTeamMember = 'remove_team_member';
 }

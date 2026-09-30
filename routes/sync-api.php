@@ -21,6 +21,7 @@ Route::prefix(config('user-team-sync.receiver.route_prefix', 'api'))
         Route::post('/toggle-user-active', [UserSyncController::class, 'toggleActive']);
         Route::post('/create-team', [TeamSyncController::class, 'create']);
         Route::post('/update-team', [TeamSyncController::class, 'update']);
+        Route::post('/remove-team-member', [TeamSyncController::class, 'removeMember']);
         Route::get('/user-teams', [TeamSyncController::class, 'getUserTeams']);
         Route::post('/sync-password', PasswordSyncController::class);
         Route::get('/identity-audit', IdentityAuditController::class);

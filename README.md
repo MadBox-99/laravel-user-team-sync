@@ -411,6 +411,7 @@ All endpoints are protected by Bearer token authentication.
 | POST | `/api/toggle-user-active` | Set active/inactive status |
 | POST | `/api/create-team` | Create a team |
 | POST | `/api/update-team` | Apply a team rename (see below) |
+| POST | `/api/remove-team-member` | End a user's team membership (see below) |
 | GET | `/api/user-teams` | Get user's teams |
 | POST | `/api/sync-password` | Sync password hash |
 | GET | `/api/identity-audit` | Diff users/teams/memberships against the publisher |
@@ -434,6 +435,29 @@ A `404` is normal, not an error: the publisher fans out to every active app
 regardless of entitlement, so most apps do not know most teams. Those are logged
 with status `skipped`.
 
+### Removing a team member
+
+`RemoveTeamMemberJob` ends one membership on one app:
+
+```php
+UserTeamSync::removeTeamMember(
+    userEmail: 'john@example.com',
+    teamSlug: 'acme',
+    appKey: 'crm',
+    userUuid: $user->uuid,   // optional
+    teamUuid: $team->uuid,   // optional
+);
+```
+
+`POST /api/remove-team-member` payload: `user_email` (required), `team_slug`
+(required), `user_uuid` and `team_uuid` (optional). The receiver detaches the user
+from the team; the account itself is never deleted or deactivated. Matching is uuid
+first, then email / slug; a differing local uuid returns `409`. An already-ended
+membership returns `200` with `removed: false`; an unknown user or team returns `404`
+(logged as `skipped`). A pending attachment for the pair is always dropped, and a
+`users.team_id` primary-team column pointing at the removed team is moved to the
+lowest remaining team, or `NULL`.
+
 ## Events
 
 Listen to these events for custom logic:
@@ -446,6 +470,7 @@ Listen to these events for custom logic:
 | `UserActiveToggled` | Active status changed |
 | `TeamCreatedFromSync` | Team created on receiver |
 | `TeamUpdatedFromSync` | Team renamed on receiver |
+| `TeamMemberRemovedFromSync` | User detached from a team on receiver |
 | `TeamSynced` | A receiver accepted a team change |
 | `TeamSyncFailed` | A receiver rejected a team change (a 404 does not count) |
 | `SyncFailed` | Any user sync operation failed |

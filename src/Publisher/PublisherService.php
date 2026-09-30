@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Madbox99\UserTeamSync\Models\SyncApp;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
+use Madbox99\UserTeamSync\Publisher\Jobs\RemoveTeamMemberJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncPasswordJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\SyncUserJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\ToggleUserActiveJob;
@@ -121,6 +122,15 @@ final class PublisherService
     public function toggleUserActive(string $userEmail, bool $isActive, string $appKey): void
     {
         $this->dispatchJob(new ToggleUserActiveJob($userEmail, $isActive, $appKey));
+    }
+
+    /**
+     * End a user's membership of a team on one receiver app. The user account
+     * on that app is left alone.
+     */
+    public function removeTeamMember(string $userEmail, string $teamSlug, string $appKey, ?string $userUuid = null, ?string $teamUuid = null): void
+    {
+        $this->dispatchJob(new RemoveTeamMemberJob($userEmail, $teamSlug, $appKey, $userUuid, $teamUuid));
     }
 
     /**

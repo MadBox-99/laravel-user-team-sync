@@ -4,16 +4,21 @@ declare(strict_types=1);
 
 namespace Madbox99\UserTeamSync\Receiver\Http\Controllers;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Madbox99\UserTeamSync\Concerns\LogsInboundSync;
 use Madbox99\UserTeamSync\Enums\SyncAction;
 use Madbox99\UserTeamSync\Events\TeamCreatedFromSync;
+use Madbox99\UserTeamSync\Events\TeamMemberRemovedFromSync;
 use Madbox99\UserTeamSync\Events\TeamUpdatedFromSync;
 use Madbox99\UserTeamSync\Models\PendingTeamAttachment;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\CreateTeamRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\GetUserTeamsRequest;
+use Madbox99\UserTeamSync\Receiver\Http\Requests\RemoveTeamMemberRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\UpdateTeamRequest;
 
 final class TeamSyncController extends Controller
@@ -169,6 +174,101 @@ final class TeamSyncController extends Controller
         return response()->json(['message' => 'Team updated successfully']);
     }
 
+    /**
+     * Ends a user's membership of a local team. The user account is never
+     * deleted or deactivated here — that is toggle-user-active's job.
+     *
+     * Idempotent: a user who is already not a member is a success with
+     * `removed: false`. An unknown user or team is a 404, which the publisher
+     * logs as `skipped` (create-user fans out to every active app, so most apps
+     * do not know most memberships). Either way any pending attachment for the
+     * pair is dropped first, so a create-user that arrives late cannot
+     * resurrect a membership the publisher already ended.
+     *
+     * Identity follows update-team: uuid first, then email / slug, and a local
+     * uuid that disagrees with the incoming one is a 409 rather than a guess.
+     *
+     * A host whose users table carries a primary `team_id` pointing at the
+     * removed team is repointed to the lowest remaining team, or NULL.
+     */
+    public function removeMember(RemoveTeamMemberRequest $request): JsonResponse
+    {
+        $validated = $request->validated();
+
+        /** @var class-string<Model> $userModel */
+        $userModel = config('user-team-sync.models.user');
+
+        /** @var class-string<Model> $teamModel */
+        $teamModel = config('user-team-sync.models.team');
+
+        PendingTeamAttachment::query()
+            ->where('user_email', $validated['user_email'])
+            ->where('team_slug', $validated['team_slug'])
+            ->delete();
+
+        $user = $this->resolveByUuidOr($userModel, $validated['user_uuid'] ?? null, 'email', $validated['user_email']);
+
+        if ($user === false) {
+            return response()->json(['message' => 'User uuid mismatch'], 409);
+        }
+
+        if (! $user instanceof Model) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        $team = $this->resolveByUuidOr($teamModel, $validated['team_uuid'] ?? null, 'slug', $validated['team_slug']);
+
+        if ($team === false) {
+            return response()->json(['message' => 'Team uuid mismatch'], 409);
+        }
+
+        if (! $team instanceof Model) {
+            return response()->json(['message' => 'Team not found'], 404);
+        }
+
+        if (! method_exists($user, 'teams')) {
+            return response()->json(['message' => 'User model has no teams() relation'], 422);
+        }
+
+        $primaryTeamReassigned = false;
+
+        $removed = DB::transaction(function () use ($user, $team, $userModel, &$primaryTeamReassigned): bool {
+            $removed = $user->teams()->detach($team->getKey()) > 0;
+
+            if (Schema::hasColumn($user->getTable(), 'team_id')
+                && (string) $user->getAttribute('team_id') === (string) $team->getKey()) {
+                $fallbackTeamId = $user->teams()->orderBy($team->qualifyColumn($team->getKeyName()))->value($team->qualifyColumn($team->getKeyName()));
+
+                // Query update: bypass the host model's events and casts, the
+                // same way create-user writes password and role.
+                $userModel::query()->where($user->getKeyName(), $user->getKey())
+                    ->update(['team_id' => $fallbackTeamId]);
+
+                $primaryTeamReassigned = true;
+            }
+
+            return $removed;
+        });
+
+        $this->logInbound(SyncAction::RemoveTeamMember, $validated['user_email']);
+
+        Log::info('UserTeamSync: Team member removed via sync', [
+            'team_id' => $team->getKey(),
+            'user_id' => $user->getKey(),
+            'removed' => $removed,
+            'primary_team_reassigned' => $primaryTeamReassigned,
+        ]);
+
+        if ($removed) {
+            TeamMemberRemovedFromSync::dispatch($user, $team);
+        }
+
+        return response()->json([
+            'message' => $removed ? 'Team member removed' : 'User is not a member of the team',
+            'removed' => $removed,
+        ]);
+    }
+
     public function getUserTeams(GetUserTeamsRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -183,6 +283,38 @@ final class TeamSyncController extends Controller
             : collect();
 
         return response()->json(['teams' => $teams]);
+    }
+
+    /**
+     * Uuid first, then the fallback column. Returns false when the fallback
+     * match carries a different uuid of its own: the two sides disagree about
+     * which record this is.
+     *
+     * @param  class-string<Model>  $modelClass
+     */
+    private function resolveByUuidOr(string $modelClass, ?string $uuid, string $column, string $value): Model|false|null
+    {
+        if ($uuid !== null) {
+            $match = $modelClass::query()->where('uuid', $uuid)->first();
+
+            if ($match instanceof Model) {
+                return $match;
+            }
+        }
+
+        $candidate = $modelClass::query()->where($column, $value)->first();
+
+        if (! $candidate instanceof Model) {
+            return null;
+        }
+
+        $localUuid = $candidate->getAttribute('uuid');
+
+        if ($uuid !== null && $localUuid !== null && $localUuid !== $uuid) {
+            return false;
+        }
+
+        return $candidate;
     }
 
     /**

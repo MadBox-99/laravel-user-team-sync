@@ -12,6 +12,7 @@ use Madbox99\UserTeamSync\Publisher\PublisherService;
  * @method static void syncUser(string $email, array $changedData)
  * @method static void createTeam(string $teamName, string $userEmail, ?string $slug = null, ?string $userName = null)
  * @method static void toggleUserActive(string $userEmail, bool $isActive, string $appKey)
+ * @method static void removeTeamMember(string $userEmail, string $teamSlug, string $appKey, ?string $userUuid = null, ?string $teamUuid = null)
  * @method static array getApps()
  * @method static array getActiveApps()
  *

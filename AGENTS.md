@@ -27,7 +27,8 @@ src/
 │       ├── CreateUserJob.php      # Broadcasts new user to all active apps
 │       ├── SyncUserJob.php        # Broadcasts field changes
 │       ├── CreateTeamJob.php      # Creates team on receiver apps
-│       └── ToggleUserActiveJob.php # Toggles active status on specific app
+│       ├── ToggleUserActiveJob.php # Toggles active status on specific app
+│       └── RemoveTeamMemberJob.php # Ends a team membership on specific app
 ├── Receiver/
 │   └── Http/
 │       ├── Controllers/           # API endpoints for incoming sync
@@ -63,6 +64,7 @@ All require Bearer token via `ValidateSyncApiKey` middleware.
 | POST | `/api/sync-user` | Update user fields |
 | POST | `/api/toggle-user-active` | Set active/inactive |
 | POST | `/api/create-team` | Create team, optionally attach user |
+| POST | `/api/remove-team-member` | Detach user from team (account kept) |
 | GET | `/api/user-teams` | Get user's team IDs |
 | POST | `/api/sync-password` | Sync pre-hashed password |
 
