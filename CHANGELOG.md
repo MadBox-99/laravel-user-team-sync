@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-16
+
 ### Added
 - `receiver.local_only_roles` (default `[]`): roles an app grants by hand, e.g.
   `['Super-Admin']`. The SSO login / revalidation, `/api/create-user` and `/api/sync-user`
