@@ -228,3 +228,22 @@ it('falls back to default api key for database app with null key', function (): 
 
     expect($service->getApiKey('crm'))->toBe('default-key');
 });
+
+it('skips a database app whose api_key cannot be decrypted instead of failing every app', function (): void {
+    config()->set('user-team-sync.publisher.app_source', 'database');
+    Illuminate\Support\Facades\Log::spy();
+
+    SyncApp::query()->create(['name' => 'crm', 'url' => 'https://crm.test', 'api_key' => 'crm-key', 'is_active' => true]);
+    SyncApp::query()->create(['name' => 'broken', 'url' => 'https://broken.test', 'is_active' => true]);
+    Illuminate\Support\Facades\DB::table('sync_apps')->where('name', 'broken')->update(['api_key' => str_repeat('a', 64)]);
+
+    $service = app(PublisherService::class);
+
+    expect(array_keys($service->getActiveApps()))->toBe(['crm'])
+        ->and(array_keys($service->getApps()))->toBe(['crm'])
+        ->and($service->getApp('broken'))->toBeNull()
+        ->and($service->getApp('crm')['api_key'])->toBe('crm-key');
+
+    Illuminate\Support\Facades\Log::shouldHaveReceived('error')
+        ->withArgs(fn (string $message): bool => str_contains($message, '[broken]'));
+});

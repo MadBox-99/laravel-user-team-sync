@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-10-16
+
+### Fixed
+- Publisher (`app_source = database`): a `sync_apps` row whose `api_key` cannot be decrypted
+  (e.g. written unencrypted, bypassing the model's `encrypted` cast) no longer throws
+  `DecryptException` out of `getApps()` / `getActiveApps()` / `getApp()`. That row is logged at
+  `error` level and skipped; every other app keeps syncing. Before, one such row made every
+  `CreateUserJob`, `SyncUserJob`, `CreateTeamJob`, … fail for all apps.
+
 ## [1.18.0] - 2026-10-16
 
 ### Added
