@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Madbox99\UserTeamSync\Publisher;
 
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Madbox99\UserTeamSync\Models\SyncApp;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateTeamJob;
 use Madbox99\UserTeamSync\Publisher\Jobs\CreateUserJob;
@@ -29,10 +32,7 @@ final class PublisherService
     public function getApps(): array
     {
         if ($this->usesDatabase()) {
-            return SyncApp::all()
-                ->keyBy('name')
-                ->map(fn (SyncApp $app) => $app->toAppArray())
-                ->all();
+            return $this->toAppArrays(SyncApp::all());
         }
 
         return config('user-team-sync.publisher.apps', []);
@@ -44,11 +44,7 @@ final class PublisherService
     public function getActiveApps(): array
     {
         if ($this->usesDatabase()) {
-            return SyncApp::where('is_active', true)
-                ->get()
-                ->keyBy('name')
-                ->map(fn (SyncApp $app) => $app->toAppArray())
-                ->all();
+            return $this->toAppArrays(SyncApp::where('is_active', true)->get());
         }
 
         return array_filter($this->getApps(), fn (array $app): bool => $app['active'] ?? false);
@@ -78,10 +74,47 @@ final class PublisherService
         if ($this->usesDatabase()) {
             $app = SyncApp::where('name', $appName)->first();
 
-            return $app?->toAppArray();
+            return $app instanceof SyncApp ? $this->toAppArrayOrSkip($app) : null;
         }
 
         return $this->getApps()[$appName] ?? null;
+    }
+
+    /**
+     * @param  Collection<int, SyncApp>  $apps
+     * @return array<string, array{url: string, api_key: ?string, active: bool}>
+     */
+    private function toAppArrays(Collection $apps): array
+    {
+        $arrays = [];
+
+        foreach ($apps as $app) {
+            $array = $this->toAppArrayOrSkip($app);
+
+            if ($array !== null) {
+                $arrays[$app->name] = $array;
+            }
+        }
+
+        return $arrays;
+    }
+
+    /**
+     * An api_key that cannot be decrypted (typically written to sync_apps
+     * unencrypted, bypassing the model's 'encrypted' cast) must take only its
+     * own app out of the sync, not throw for every app the job iterates over.
+     *
+     * @return array{url: string, api_key: ?string, active: bool}|null
+     */
+    private function toAppArrayOrSkip(SyncApp $app): ?array
+    {
+        try {
+            return $app->toAppArray();
+        } catch (DecryptException) {
+            Log::error("UserTeamSync: the api_key of sync app [{$app->name}] cannot be decrypted (stored unencrypted, or with another APP_KEY?). The app is skipped until it is saved again through the SyncApp model.");
+
+            return null;
+        }
     }
 
     public function createUser(string $email, string $name, string $password, string $role, string $ownerEmail, ?string $uuid = null): void
