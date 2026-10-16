@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per-app `PreservesLocalSuperAdmin` `syncRoles()` override.
 - `Support\RoleWriter`: the single place where a sync writes a user's role.
 
+### Changed
+- `Client\IdentityProvisioner` and `Receiver\Http\Controllers\UserSyncController` now take a
+  `Support\RoleWriter` constructor argument. Resolve them from the container
+  (`resolve(IdentityProvisioner::class)`); a hand-written `new IdentityProvisioner()` (e.g. in a
+  test) throws `ArgumentCountError` from 1.18.0 on.
+
 ## [1.17.0] - 2026-09-30
 
 ### Added
