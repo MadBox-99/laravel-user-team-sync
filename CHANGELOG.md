@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-10-16
+
+### Added
+- `receiver.local_only_roles` (default `[]`): roles an app grants by hand, e.g.
+  `['Super-Admin']`. The SSO login / revalidation, `/api/create-user` and `/api/sync-user`
+  never hand one out (an incoming local-only role becomes `receiver.default_role`) and never
+  take one away (a held one is kept next to the synced Spatie role; a plain `users.role`
+  column holding one is left untouched). Exact, case-sensitive names. Replaces the
+  per-app `PreservesLocalSuperAdmin` `syncRoles()` override.
+- `Support\RoleWriter`: the single place where a sync writes a user's role.
+
 ## [1.17.0] - 2026-09-30
 
 ### Added

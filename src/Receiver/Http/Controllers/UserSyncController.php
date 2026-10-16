@@ -19,10 +19,13 @@ use Madbox99\UserTeamSync\Models\PendingUserActivation;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\CreateUserRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\SyncUserRequest;
 use Madbox99\UserTeamSync\Receiver\Http\Requests\ToggleUserActiveRequest;
+use Madbox99\UserTeamSync\Support\RoleWriter;
 
 final class UserSyncController extends Controller
 {
     use LogsInboundSync;
+
+    public function __construct(private readonly RoleWriter $roleWriter) {}
 
     public function create(CreateUserRequest $request): JsonResponse
     {
@@ -52,7 +55,9 @@ final class UserSyncController extends Controller
             $userModel::query()->where($user->getKeyName(), $user->getKey())
                 ->update(['password' => $validated['password_hash']]);
 
-            $role = $validated['role'] ?? config('user-team-sync.receiver.default_role', 'subscriber');
+            $role = $this->roleWriter->permitted(
+                (string) ($validated['role'] ?? config('user-team-sync.receiver.default_role', 'subscriber')),
+            );
 
             if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'assignRole')) {
                 $user->assignRole($role);
@@ -113,11 +118,11 @@ final class UserSyncController extends Controller
             }
 
             if (isset($validated['role'])) {
-                if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'syncRoles')) {
-                    $user->syncRoles([$validated['role']]);
-                } else {
+                if ($this->roleWriter->usesSpatie($user)) {
+                    $this->roleWriter->syncSpatieRole($user, (string) $validated['role']);
+                } elseif (! $this->roleWriter->keepsColumnRole($user)) {
                     $userModel::query()->where($user->getKeyName(), $user->getKey())
-                        ->update(['role' => $validated['role']]);
+                        ->update(['role' => $this->roleWriter->permitted((string) $validated['role'])]);
                 }
             }
         });

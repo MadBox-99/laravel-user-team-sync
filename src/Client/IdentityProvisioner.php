@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Madbox99\UserTeamSync\Client\Exceptions\IdentityConflictException;
+use Madbox99\UserTeamSync\Support\RoleWriter;
 
 /**
  * Turns a claim payload from the identity provider into a local, signed-in-able
@@ -17,6 +18,8 @@ use Madbox99\UserTeamSync\Client\Exceptions\IdentityConflictException;
  */
 final class IdentityProvisioner
 {
+    public function __construct(private readonly RoleWriter $roleWriter) {}
+
     /**
      * @param  array<string, mixed>  $claims
      */
@@ -141,15 +144,19 @@ final class IdentityProvisioner
             return;
         }
 
-        if (config('user-team-sync.receiver.role_driver') === 'spatie' && method_exists($user, 'syncRoles')) {
+        if ($this->roleWriter->usesSpatie($user)) {
             /** @var class-string<Model> $roleModel */
             $roleModel = config('permission.models.role', \Spatie\Permission\Models\Role::class);
 
             /** @var array<int, string> $localRoleNames */
             $localRoleNames = $roleModel::query()->pluck('name')->all();
 
-            $user->syncRoles([$this->resolveRoleName($claimRole, $localRoleNames)]);
+            $this->roleWriter->syncSpatieRole($user, $this->resolveRoleName($claimRole, $localRoleNames));
 
+            return;
+        }
+
+        if ($this->roleWriter->keepsColumnRole($user)) {
             return;
         }
 
@@ -166,7 +173,7 @@ final class IdentityProvisioner
         // through verbatim rather than decaying to default_role. An app whose
         // column rejects a publisher role must say so in role_map; we do not
         // introspect enum casts or CHECK constraints to guess.
-        $user->forceFill(['role' => $this->resolveRoleName($claimRole, [$claimRole])])->save();
+        $user->forceFill(['role' => $this->roleWriter->permitted($this->resolveRoleName($claimRole, [$claimRole]))])->save();
     }
 
     /**
