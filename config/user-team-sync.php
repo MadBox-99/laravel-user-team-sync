@@ -83,6 +83,15 @@ return [
         'middleware' => [],
         'role_driver' => 'spatie',
         'default_role' => 'subscriber',
+
+        /*
+        | Roles this app grants by hand, e.g. ['Super-Admin']. The identity
+        | provider never knows about them, so neither the SSO login /
+        | revalidation nor /api/create-user and /api/sync-user hands one out
+        | or takes one away: an incoming local-only role becomes default_role,
+        | and one the user already holds is kept. Exact, case-sensitive names.
+        */
+        'local_only_roles' => [],
         'default_active' => false,
         'inactive_redirect_url' => env('USER_TEAM_SYNC_INACTIVE_REDIRECT_URL'),
 

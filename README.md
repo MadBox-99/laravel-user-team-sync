@@ -247,6 +247,29 @@ The practical consequences:
   validate it: under Spatie an unknown default makes `syncRoles()` throw, and on the column
   path it is your own reading code that would reject the value. Set it to something real.
 
+### Local-only roles
+
+Some roles are granted by hand in one app and are unknown to the identity provider —
+typically a Filament Shield `Super-Admin`. List them in `receiver.local_only_roles`:
+
+```php
+'receiver' => [
+    'local_only_roles' => ['Super-Admin'],
+],
+```
+
+Every path that writes a role — the SSO login and revalidation, `/api/create-user` and
+`/api/sync-user` — then honours two rules:
+
+- **Never handed out.** An incoming role that resolves to a local-only role (directly, through
+  `role_map` or through the case-insensitive match) is written as `receiver.default_role`.
+- **Never taken away.** A local-only role the user already holds is kept next to the synced
+  role (Spatie), or the plain `users.role` column is left untouched when it holds one.
+
+Names are compared exactly, in PHP. Grant or revoke a local-only role in the app itself
+(`assignRole()` / `removeRole()`, or the app's own user admin). The host `User` model needs
+no override of `syncRoles()` for this.
+
 > **Changed in the next release.** Before it, `role_map` was consulted only on the Spatie
 > path; the column path wrote the raw claim role and ignored the map entirely. Apps whose
 > local vocabulary equals the publisher's see no behaviour change — an unmapped role still
