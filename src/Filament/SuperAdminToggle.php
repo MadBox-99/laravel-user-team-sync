@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync\Filament;
 
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
@@ -21,6 +23,14 @@ class SuperAdminToggle extends Toggle
     public static function make(?string $name = null): static
     {
         return parent::make($name ?? (string) config('user-team-sync.super_admin.column', 'is_super_admin'));
+    }
+
+    /**
+     * Form state key (next to the field) remembering that the toggle was flipped.
+     */
+    protected static function touchedStatePath(): string
+    {
+        return '_super_admin_touched';
     }
 
     public static function canManage(): bool
@@ -43,7 +53,16 @@ class SuperAdminToggle extends Toggle
             ->visible(fn (): bool => static::canManage())
             ->disabled(fn (?Model $record): bool => $record?->is(Auth::user()) ?? false)
             ->dehydrated(false)
-            ->saveRelationshipsUsing(function (Model $record, ?bool $state): void {
+            ->live()
+            // Only a toggle the editor actually flipped is written. A form loaded
+            // before someone else changed the flag would otherwise write its stale
+            // value back on any unrelated save (e.g. a name change).
+            ->afterStateUpdated(fn (Set $set): mixed => $set(static::touchedStatePath(), true))
+            ->saveRelationshipsUsing(function (Model $record, ?bool $state, Get $get): void {
+                if (! $get(static::touchedStatePath())) {
+                    return;
+                }
+
                 if (! static::canManage() || $record->is(Auth::user()) || ! HasSuperAdmin::usesSuperAdmin($record)) {
                     return;
                 }
