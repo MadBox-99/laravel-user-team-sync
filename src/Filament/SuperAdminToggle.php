@@ -10,6 +10,7 @@ use Filament\Schemas\Components\Utilities\Set;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
+use Madbox99\UserTeamSync\Support\SuperAdmin;
 
 /**
  * User form field for the global super admin flag (see {@see HasSuperAdmin}).
@@ -38,7 +39,7 @@ class SuperAdminToggle extends Toggle
         $user = Auth::user();
 
         return $user !== null
-            && HasSuperAdmin::usesSuperAdmin($user)
+            && SuperAdmin::usesTrait($user)
             && $user->isSuperAdmin();
     }
 
@@ -63,7 +64,7 @@ class SuperAdminToggle extends Toggle
                     return;
                 }
 
-                if (! static::canManage() || $record->is(Auth::user()) || ! HasSuperAdmin::usesSuperAdmin($record)) {
+                if (! static::canManage() || $record->is(Auth::user()) || ! SuperAdmin::usesTrait($record)) {
                     return;
                 }
 

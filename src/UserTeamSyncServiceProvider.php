@@ -13,6 +13,7 @@ use Madbox99\UserTeamSync\Console\UpdateCommand;
 use Madbox99\UserTeamSync\Publisher\Observers\TeamSyncObserver;
 use Madbox99\UserTeamSync\Publisher\Observers\UserSyncObserver;
 use Madbox99\UserTeamSync\Publisher\PublisherService;
+use Madbox99\UserTeamSync\Support\SuperAdmin;
 
 final class UserTeamSyncServiceProvider extends ServiceProvider
 {
@@ -88,7 +89,7 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
         }
 
         Gate::before(function (mixed $user): ?bool {
-            if (is_object($user) && HasSuperAdmin::usesSuperAdmin($user) && $user->isSuperAdmin()) {
+            if (is_object($user) && SuperAdmin::usesTrait($user) && $user->isSuperAdmin()) {
                 return true;
             }
 

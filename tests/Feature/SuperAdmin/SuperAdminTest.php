@@ -100,3 +100,10 @@ it('publishes the migration with a timestamp so it runs in order', function (): 
     expect($files)->toHaveCount(1)
         ->and(basename($files[0]))->toMatch('/^\d{4}_\d{2}_\d{2}_\d{6}_add_is_super_admin_to_users_table\.php$/');
 });
+
+it('detects the trait without calling a static method on the trait itself', function (): void {
+    expect(\Madbox99\UserTeamSync\Support\SuperAdmin::usesTrait(new SuperAdminUser))->toBeTrue()
+        ->and(\Madbox99\UserTeamSync\Support\SuperAdmin::usesTrait(new User))->toBeFalse()
+        ->and(\Madbox99\UserTeamSync\Support\SuperAdmin::is(makeSuperAdminUser()->grantSuperAdmin()))->toBeTrue()
+        ->and(\Madbox99\UserTeamSync\Support\SuperAdmin::is(null))->toBeFalse();
+});
