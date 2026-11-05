@@ -7,6 +7,7 @@ namespace Madbox99\UserTeamSync\Console;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
+use Madbox99\UserTeamSync\Support\SuperAdmin;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
@@ -28,7 +29,7 @@ final class SuperAdminCommand extends Command
         /** @var class-string<Model> $userModel */
         $userModel = config('user-team-sync.models.user');
 
-        if (! HasSuperAdmin::usesSuperAdmin(new $userModel)) {
+        if (! SuperAdmin::usesTrait(new $userModel)) {
             $this->components->error("{$userModel} does not use the ".HasSuperAdmin::class.' trait.');
 
             return self::FAILURE;

@@ -69,8 +69,12 @@ trait HasSuperAdmin
         return $query->where(static::superAdminColumn(), true);
     }
 
+    /**
+     * @deprecated Use \Madbox99\UserTeamSync\Support\SuperAdmin::usesTrait(); calling a
+     *             static method on the trait itself is deprecated since PHP 8.1.
+     */
     public static function usesSuperAdmin(object $user): bool
     {
-        return in_array(HasSuperAdmin::class, class_uses_recursive($user), true);
+        return \Madbox99\UserTeamSync\Support\SuperAdmin::usesTrait($user);
     }
 }

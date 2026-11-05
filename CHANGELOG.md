@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.3] - 2026-11-05
+
+### Fixed
+- No more PHP 8.4 deprecation ("Calling static trait method ... is deprecated") from the `Gate::before`
+  bypass, the command and the Filament field: they use the new `Support\SuperAdmin::usesTrait()` /
+  `SuperAdmin::is()`. `HasSuperAdmin::usesSuperAdmin()` is kept but deprecated.
+
 ## [1.19.2] - 2026-11-05
 
 ### Fixed
