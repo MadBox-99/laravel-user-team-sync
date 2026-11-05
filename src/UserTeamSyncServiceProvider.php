@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Madbox99\UserTeamSync;
 
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
 use Madbox99\UserTeamSync\Console\InstallCommand;
+use Madbox99\UserTeamSync\Console\SuperAdminCommand;
 use Madbox99\UserTeamSync\Console\UpdateCommand;
 use Madbox99\UserTeamSync\Publisher\Observers\TeamSyncObserver;
 use Madbox99\UserTeamSync\Publisher\Observers\UserSyncObserver;
@@ -28,8 +31,20 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
             $this->commands([
                 InstallCommand::class,
                 UpdateCommand::class,
+                SuperAdminCommand::class,
             ]);
         }
+
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+
+        // Opt-in: an app adopting the global super admin flag publishes this
+        // migration; it is not auto-loaded, so the hub and apps that do not use
+        // HasSuperAdmin never get the column.
+        $this->publishesMigrations([
+            __DIR__.'/../database/super-admin-migrations/' => database_path('migrations'),
+        ], 'user-team-sync-super-admin');
+
+        $this->registerSuperAdminGate();
 
         $this->publishes([
             __DIR__.'/../config/user-team-sync.php' => config_path('user-team-sync.php'),
@@ -60,6 +75,25 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
         if ($mode === 'client') {
             $this->bootClient();
         }
+    }
+
+    /**
+     * Super admins pass every ability (`Gate::before`) when the user model uses
+     * HasSuperAdmin and `super_admin.gate_bypass` is on.
+     */
+    private function registerSuperAdminGate(): void
+    {
+        if (! config('user-team-sync.super_admin.gate_bypass', true)) {
+            return;
+        }
+
+        Gate::before(function (mixed $user): ?bool {
+            if (is_object($user) && HasSuperAdmin::usesSuperAdmin($user) && $user->isSuperAdmin()) {
+                return true;
+            }
+
+            return null;
+        });
     }
 
     private function bootPublisher(): void

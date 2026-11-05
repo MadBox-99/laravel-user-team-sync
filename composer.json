@@ -55,5 +55,8 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true
         }
+    },
+    "suggest": {
+        "filament/filament": "Required for the SuperAdminToggle form field and SuperAdminColumn table column (^4.0 || ^5.0)"
     }
 }

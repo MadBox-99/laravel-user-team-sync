@@ -559,3 +559,34 @@ vendor/bin/pest
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+## Global super admin
+
+A tenant-independent super admin flag, local to each app — the SSO sync never sends, grants or removes it.
+
+```bash
+php artisan vendor:publish --tag=user-team-sync-super-admin   # adds users.is_super_admin
+php artisan migrate
+php artisan user-team-sync:super-admin admin@example.com       # the first one; --revoke to remove
+```
+
+```php
+use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
+
+class User extends Authenticatable
+{
+    use HasSuperAdmin; // isSuperAdmin(), setSuperAdmin(), grantSuperAdmin(), revokeSuperAdmin(), superAdmins()
+}
+```
+
+Super admins pass every `Gate` / policy check (`user-team-sync.super_admin.gate_bypass`, default `true`).
+
+With Filament, add the field and column to the user resource — both are visible to super admins only, and nobody can change their own flag:
+
+```php
+use Madbox99\UserTeamSync\Filament\SuperAdminColumn;
+use Madbox99\UserTeamSync\Filament\SuperAdminToggle;
+
+SuperAdminToggle::make(),   // form
+SuperAdminColumn::make(),   // table
+```
