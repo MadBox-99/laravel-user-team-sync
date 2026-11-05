@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.1] - 2026-11-05
+
+### Fixed
+- `Filament\SuperAdminToggle` writes the flag only when the editor actually flipped it. A user form
+  opened before the flag changed elsewhere (console, another admin) no longer writes its stale value
+  back on an unrelated save, e.g. a name change.
+
 ## [1.19.0] - 2026-11-05
 
 ### Added
