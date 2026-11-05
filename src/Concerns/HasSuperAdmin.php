@@ -26,7 +26,16 @@ trait HasSuperAdmin
 
     public function initializeHasSuperAdmin(): void
     {
-        $this->mergeCasts([static::superAdminColumn() => 'boolean']);
+        $column = static::superAdminColumn();
+
+        $this->mergeCasts([$column => 'boolean']);
+
+        // A new, unsaved user is not a super admin. Without this default an app
+        // running Model::preventAccessingMissingAttributes() (strict mode) throws
+        // on isSuperAdmin() before the row has been read back.
+        if (! array_key_exists($column, $this->attributes)) {
+            $this->attributes[$column] = false;
+        }
     }
 
     public function isSuperAdmin(): bool
