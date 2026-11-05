@@ -8,7 +8,7 @@ use Madbox99\UserTeamSync\Tests\Fixtures\SuperAdminUser;
 use Madbox99\UserTeamSync\Tests\Fixtures\User;
 
 beforeEach(function (): void {
-    $migration = require __DIR__.'/../../../database/super-admin-migrations/add_is_super_admin_to_users_table.php';
+    $migration = require __DIR__.'/../../../database/super-admin-migrations/2026_11_05_000000_add_is_super_admin_to_users_table.php';
     $migration->up();
 
     config()->set('user-team-sync.models.user', SuperAdminUser::class);
@@ -25,7 +25,7 @@ function makeSuperAdminUser(array $attributes = []): SuperAdminUser
 }
 
 it('adds the column only once and keeps it out of mass assignment', function (): void {
-    $migration = require __DIR__.'/../../../database/super-admin-migrations/add_is_super_admin_to_users_table.php';
+    $migration = require __DIR__.'/../../../database/super-admin-migrations/2026_11_05_000000_add_is_super_admin_to_users_table.php';
     $migration->up();
 
     $user = makeSuperAdminUser(['is_super_admin' => true]);
@@ -82,4 +82,21 @@ it('refuses the command when the user model does not use the trait', function ()
     config()->set('user-team-sync.models.user', User::class);
 
     $this->artisan('user-team-sync:super-admin', ['email' => 'x@example.com'])->assertFailed();
+});
+
+it('treats a new unsaved user as no super admin, even in strict mode', function (): void {
+    \Illuminate\Database\Eloquent\Model::preventAccessingMissingAttributes();
+
+    try {
+        expect((new SuperAdminUser)->isSuperAdmin())->toBeFalse();
+    } finally {
+        \Illuminate\Database\Eloquent\Model::preventAccessingMissingAttributes(false);
+    }
+});
+
+it('publishes the migration with a timestamp so it runs in order', function (): void {
+    $files = glob(__DIR__.'/../../../database/super-admin-migrations/*.php');
+
+    expect($files)->toHaveCount(1)
+        ->and(basename($files[0]))->toMatch('/^\d{4}_\d{2}_\d{2}_\d{6}_add_is_super_admin_to_users_table\.php$/');
 });

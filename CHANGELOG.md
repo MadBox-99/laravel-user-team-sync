@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.2] - 2026-11-05
+
+### Fixed
+- The super admin migration is now published with a timestamp (`vendor:publish --tag=user-team-sync-super-admin`
+  renames it to the publish time), so it runs in order instead of after every dated migration.
+- `HasSuperAdmin`: a new, unsaved user defaults to `false`, so `isSuperAdmin()` no longer throws under
+  `Model::preventAccessingMissingAttributes()` (strict mode) before the row is read back.
+
 ## [1.19.1] - 2026-11-05
 
 ### Fixed
