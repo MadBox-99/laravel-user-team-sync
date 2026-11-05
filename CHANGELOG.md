@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-11-05
+
 ### Added
 - Global super admin flag, local to each app (the SSO sync never sends, grants or removes it):
   - `Concerns\HasSuperAdmin` user trait: `isSuperAdmin()`, `setSuperAdmin()`, `grantSuperAdmin()`,
