@@ -221,6 +221,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Super Admin
+    |--------------------------------------------------------------------------
+    | A global, tenant-independent super admin flag on the user model, used
+    | through the HasSuperAdmin trait. It is local to each app: the SSO sync
+    | never sends, grants or removes it. Publish the column's migration with
+    | `php artisan vendor:publish --tag=user-team-sync-super-admin`, create
+    | the first one with `php artisan user-team-sync:super-admin {email}`,
+    | then super admins can toggle it with the Filament SuperAdminToggle.
+    |
+    | 'gate_bypass' - super admins pass every Gate / policy check.
+    */
+    'super_admin' => [
+        'column' => 'is_super_admin',
+        'gate_bypass' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Logging
     |--------------------------------------------------------------------------
     */

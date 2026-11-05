@@ -1,0 +1,5 @@
+{
+    "Super admin": "Szuperadmin",
+    "Global administrator: sees and manages every organization. Only super admins can change it.": "Globális adminisztrátor: minden szervezetet lát és kezel. Csak szuperadmin módosíthatja.",
+    "You cannot change your own super admin flag.": "A saját szuperadmin jogodat nem módosíthatod."
+}

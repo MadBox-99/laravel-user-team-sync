@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Global super admin flag, local to each app (the SSO sync never sends, grants or removes it):
+  - `Concerns\HasSuperAdmin` user trait: `isSuperAdmin()`, `setSuperAdmin()`, `grantSuperAdmin()`,
+    `revokeSuperAdmin()`, `superAdmins()` scope. The column (`super_admin.column`, default
+    `is_super_admin`) is cast to boolean and changed with `forceFill`, so it stays out of `$fillable`.
+  - Opt-in migration: `php artisan vendor:publish --tag=user-team-sync-super-admin` (skips an
+    existing column; not auto-loaded, so the hub and apps without the trait never get it).
+  - `php artisan user-team-sync:super-admin {email} {--revoke}` to create the first super admin.
+  - `Gate::before` bypass for users with the trait and the flag on (`super_admin.gate_bypass`, default `true`).
+  - Filament (optional): `Filament\SuperAdminToggle` form field (visible to super admins only, never
+    on your own record) and `Filament\SuperAdminColumn` table column. Hungarian labels ship in `lang/hu.json`.
+
 ## [1.18.1] - 2026-10-16
 
 ### Fixed
