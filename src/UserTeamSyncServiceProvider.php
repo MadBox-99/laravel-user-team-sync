@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Madbox99\UserTeamSync;
 
+use Illuminate\Auth\Middleware\Authenticate;
+use Illuminate\Contracts\Http\Kernel as HttpKernel;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Madbox99\UserTeamSync\Client\GuestRedirectFallback;
 use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
 use Madbox99\UserTeamSync\Console\InstallCommand;
 use Madbox99\UserTeamSync\Console\SuperAdminCommand;
@@ -128,29 +130,41 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
      * Laravel's auth middleware sends guests to route('login'). A client app
      * whose login lives elsewhere (a Filament panel's /app/login) has no route
      * by that name, so a guest on any 'auth' route got a "Route [login] not
-     * defined" 500. This adds a 'login' route that redirects to the
-     * configured login_url, but only when the app has none of its own.
+     * defined" 500. The guest redirect is wrapped instead: the app's own
+     * redirect (normally route('login')) is tried first, and only a missing
+     * route falls back to the configured login_url.
      *
-     * Runs in a booted callback because the app's routes are loaded in the
-     * RouteServiceProvider's booted callback, which is registered earlier.
-     * With route:cache the fallback is cached with the rest, so Route::has()
-     * is already true at runtime and nothing is added twice.
+     * No route is registered for this: a fallback route named 'login' clashed
+     * with panels that register 'login' later and broke `route:cache`.
+     *
+     * The app's redirect is set when the HTTP kernel is resolved; in a web
+     * request that already happened, in tests and queues it happens later,
+     * so the wrap is applied now and again after the kernel resolves.
      */
-    private function registerFallbackLoginRoute(): void
+    private function wrapGuestRedirect(): void
     {
-        if (Route::has('login')) {
-            return;
+        $wrap = static function (): void {
+            $property = new \ReflectionProperty(Authenticate::class, 'redirectToCallback');
+            $previous = $property->getValue();
+
+            if ($previous instanceof GuestRedirectFallback) {
+                return;
+            }
+
+            Authenticate::redirectUsing(new GuestRedirectFallback(is_callable($previous) ? $previous : null));
+        };
+
+        if ($this->app->resolved(HttpKernel::class)) {
+            $wrap();
         }
 
-        Route::redirect('/auth/login', (string) config('user-team-sync.client.login_url', '/login'))
-            ->middleware('web')
-            ->name('login');
+        $this->app->afterResolving(HttpKernel::class, $wrap);
     }
 
     private function bootClient(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../routes/identity-client.php');
-        $this->app->booted($this->registerFallbackLoginRoute(...));
+        $this->wrapGuestRedirect();
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'user-team-sync');
 
         $this->publishes([
