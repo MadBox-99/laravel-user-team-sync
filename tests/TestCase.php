@@ -14,6 +14,14 @@ abstract class TestCase extends Orchestra
     /** @var array<string, mixed> */
     protected array $configOverrides = [];
 
+    /**
+     * Routes a test wants registered before the package boots, the way a host
+     * app's own routes are already loaded when the package looks at them.
+     *
+     * @var (\Closure(\Illuminate\Routing\Router): void)|null
+     */
+    protected ?\Closure $routesBeforeBoot = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -76,6 +84,11 @@ abstract class TestCase extends Orchestra
         $app['config']->set('user-team-sync.client.revalidate_after_minutes', 15);
         $app['config']->set('user-team-sync.client.grace_hours', 24);
         $app['config']->set('auth.providers.users.model', \Madbox99\UserTeamSync\Tests\Fixtures\User::class);
+
+        if ($this->routesBeforeBoot instanceof \Closure) {
+            $routes = $this->routesBeforeBoot;
+            $app->booting(fn () => $routes($app['router']));
+        }
 
         // Applied last so a test's own overrides always win.
         foreach ($this->configOverrides as $key => $value) {

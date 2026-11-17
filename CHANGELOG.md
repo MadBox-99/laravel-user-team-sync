@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.4] - 2026-11-17
+
+### Fixed
+- Client mode: when the host app has no route named `login` (a Filament panel's login lives on `/app/login`),
+  the package adds a fallback `login` route (`/auth/login`) that redirects to `client.login_url`. A guest on any
+  `auth` route now gets a redirect to the login page instead of a "Route [login] not defined" 500. An app's own
+  `login` route is never shadowed.
+
 ## [1.19.3] - 2026-11-05
 
 ### Fixed
