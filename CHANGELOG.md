@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.19.5] - 2026-11-17
+
+### Fixed
+- 1.19.4's fallback route named `login` broke `php artisan route:cache` in apps that register their own `login`
+  route later (e.g. a panel): "Another route has already been assigned name [login]". The fallback route is gone;
+  instead the guest redirect is wrapped in client mode: the app's own redirect is used when it works, and only a
+  missing `login` route falls back to `client.login_url`.
+
 ## [1.19.4] - 2026-11-17
 
 ### Fixed
