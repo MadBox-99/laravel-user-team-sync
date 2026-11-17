@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Madbox99\UserTeamSync;
 
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Madbox99\UserTeamSync\Concerns\HasSuperAdmin;
 use Madbox99\UserTeamSync\Console\InstallCommand;
@@ -123,9 +124,33 @@ final class UserTeamSyncServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/sync-api.php');
     }
 
+    /**
+     * Laravel's auth middleware sends guests to route('login'). A client app
+     * whose login lives elsewhere (a Filament panel's /app/login) has no route
+     * by that name, so a guest on any 'auth' route got a "Route [login] not
+     * defined" 500. This adds a 'login' route that redirects to the
+     * configured login_url, but only when the app has none of its own.
+     *
+     * Runs in a booted callback because the app's routes are loaded in the
+     * RouteServiceProvider's booted callback, which is registered earlier.
+     * With route:cache the fallback is cached with the rest, so Route::has()
+     * is already true at runtime and nothing is added twice.
+     */
+    private function registerFallbackLoginRoute(): void
+    {
+        if (Route::has('login')) {
+            return;
+        }
+
+        Route::redirect('/auth/login', (string) config('user-team-sync.client.login_url', '/login'))
+            ->middleware('web')
+            ->name('login');
+    }
+
     private function bootClient(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../routes/identity-client.php');
+        $this->app->booted($this->registerFallbackLoginRoute(...));
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'user-team-sync');
 
         $this->publishes([
